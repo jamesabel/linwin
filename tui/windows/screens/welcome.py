@@ -44,6 +44,10 @@ class DetailModal(ModalScreen):
     }
     #detail-close {
         width: 100%;
+        text-align: center;
+        color: $text;
+        text-style: bold;
+        margin-top: 1;
     }
     """
 
@@ -56,12 +60,9 @@ class DetailModal(ModalScreen):
         with Vertical(id="detail-dialog"):
             yield Static(self._title, id="detail-title")
             yield Static(self._detail, id="detail-text")
-            yield Button("Close (Esc)", id="detail-close", variant="primary")
+            yield Static("Press Escape or q to close", id="detail-close")
 
     def action_close(self) -> None:
-        self.dismiss()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss()
 
 
@@ -114,12 +115,8 @@ class WelcomeScreen(Screen):
         margin: 1 3;
         color: $warning;
     }
-    .info-row-fail {
-        color: $error;
-    }
-    .info-row-fail-btn {
-        min-width: 16;
-        margin: 0 0 0 1;
+    .detail-link {
+        width: 1fr;
     }
     """
 
@@ -195,17 +192,23 @@ class WelcomeScreen(Screen):
                 await info_box.mount(row)
                 await row.mount(Label(label_text))
                 if result.detail:
-                    btn_id = f"btn-detail-{check_id}"
-                    self._fail_details[btn_id] = (label_text, result.detail)
-                    await row.mount(Label(f"{result.message}  [red]FAIL[/] - "))
-                    await row.mount(Button(
-                        "Click here for instructions",
-                        id=btn_id,
-                        variant="error",
-                        classes="info-row-fail-btn",
-                    ))
+                    link_id = f"detail-link-{check_id}"
+                    self._fail_details[link_id] = (label_text, result.detail)
+                    link = Static(
+                        f"{result.message}  [red]FAIL[/] - [bold yellow]Click here for instructions[/]",
+                        id=link_id,
+                        classes="detail-link",
+                    )
+                    await row.mount(link)
                 else:
                     await row.mount(Label(f"{result.message}  [red]FAIL[/]"))
+
+    def on_click(self, event) -> None:
+        """Handle clicks on detail link labels."""
+        widget = event.widget
+        if hasattr(widget, "id") and widget.id and widget.id in self._fail_details:
+            title, detail = self._fail_details[widget.id]
+            self.app.push_screen(DetailModal(title, detail))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
@@ -215,9 +218,6 @@ class WelcomeScreen(Screen):
         elif btn_id == "btn-start":
             from .phase1 import Phase1Screen
             self.app.push_screen(Phase1Screen(self._config))
-        elif btn_id and btn_id in self._fail_details:
-            title, detail = self._fail_details[btn_id]
-            self.app.push_screen(DetailModal(title, detail))
 
 
 def _config_row(label: str, value: str) -> Horizontal:
