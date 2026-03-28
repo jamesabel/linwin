@@ -8,4 +8,4 @@ dependencies = [
 ]
 
 [project.scripts]
-setup-tui = "_setup_tui:main"
+setup-tui = "tui.windows.__main__:main"
