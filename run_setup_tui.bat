@@ -4,7 +4,7 @@ setlocal
 :: Check if uv is available
 where uv >nul 2>&1
 if %errorlevel% neq 0 (
-    echo uv not found. Please run install.bat first.
+    echo uv not found. Please run install_dependencies.bat first.
     pause
     exit /b 1
 )
