@@ -73,6 +73,7 @@ class ConfigEditorScreen(Screen):
                 yield _field("Distro Name:", c.distroName, "input-distro-name")
                 yield _field("Import Name:", c.distroImportName, "input-import-name")
                 yield _field("Drive Letter:", c.wslDriveLetter, "input-drive-letter")
+                yield Button("Scan Drives", id="btn-scan-drives", variant="default")
                 yield _field("Install Path:", c.wslInstallPath, "input-install-path")
 
             with Vertical(classes="editor-section"):
@@ -103,6 +104,17 @@ class ConfigEditorScreen(Screen):
             self.app.pop_screen()
         elif event.button.id == "btn-cancel":
             self.app.pop_screen()
+        elif event.button.id == "btn-scan-drives":
+            from .drive_picker import DrivePickerModal
+            current = self.query_one("#input-drive-letter", Input).value
+            self.app.push_screen(DrivePickerModal(current), self._on_drive_selected)
+
+    def _on_drive_selected(self, letter: str | None) -> None:
+        if letter:
+            self.query_one("#input-drive-letter", Input).value = letter
+            # Update install path to match
+            path_input = self.query_one("#input-install-path", Input)
+            path_input.value = f"{letter}:\\WSL\\{self._config.distroImportName}"
 
     def _save_config(self) -> None:
         c = self._config

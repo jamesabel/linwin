@@ -130,13 +130,24 @@ async def check_drive_exists(drive_letter: str, on_line: LineCallback | None = N
         )
         free_gb = space_result.output.strip() if space_result.success else "?"
         return ValidationResult(True, f"Drive {drive_letter}: found", f"{free_gb} GB free")
+    # Try to suggest a better drive
+    from .drive_scan import scan_drives
+    scan = await scan_drives()
+    suggestion = ""
+    if scan.candidates:
+        best = scan.candidates[0]
+        suggestion = (
+            f"\n"
+            f"Recommended drive: {best.letter}: "
+            f"({best.type_display}, {best.free_gb} GB free)\n"
+        )
+
     detail = (
         f"Drive {drive_letter}: was not found on this system.\n"
-        "\n"
+        f"{suggestion}\n"
         "To fix this:\n"
         f"  1. Connect the drive that should be mounted as {drive_letter}:\n"
-        "  2. Or edit config.json to change wslDriveLetter to a drive\n"
-        "     that exists on this machine (use Configure Settings)\n"
+        "  2. Or use Configure Settings > Scan Drives to pick a drive\n"
     )
     return ValidationResult(False, f"Drive {drive_letter}: not found", detail)
 
