@@ -81,10 +81,9 @@ Screen {
 .info-warn { color: $warning; }
 """
 
-# Task status icons (ASCII-safe for Windows terminals)
-# Escaped for Rich markup (\\[ prevents bracket interpretation)
-ICON_PENDING = "\\[ ]"
-ICON_RUNNING = "\\[~]"
-ICON_DONE = "\\[x]"
-ICON_FAILED = "\\[!]"
-ICON_SKIPPED = "\\[-]"
+# Task status icons
+ICON_PENDING = "-"
+ICON_RUNNING = "[yellow]~[/]"
+ICON_DONE = "[green]OK[/]"
+ICON_FAILED = "[red]FAIL[/]"
+ICON_SKIPPED = "[dim]skip[/]"
