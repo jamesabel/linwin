@@ -28,7 +28,17 @@ async def check_windows_build(on_line: LineCallback | None = None) -> Validation
     except ValueError:
         return ValidationResult(False, f"Unexpected build output: {build_str}")
     if build < 19044:
-        return ValidationResult(False, f"Windows build {build} < 19044", "Requires Windows 10 21H2+ or Windows 11")
+        detail = (
+            f"Your Windows build is {build}, but WSL2 requires build 19044 or later.\n"
+            "\n"
+            "To fix this:\n"
+            "  1. Open Settings > Windows Update\n"
+            "  2. Install all available updates\n"
+            "  3. Reboot and re-run this setup\n"
+            "\n"
+            "WSL2 requires Windows 10 version 21H2+ or Windows 11."
+        )
+        return ValidationResult(False, f"Windows build {build} < 19044", detail)
     return ValidationResult(True, f"Windows build {build}", "OK")
 
 
@@ -120,7 +130,15 @@ async def check_drive_exists(drive_letter: str, on_line: LineCallback | None = N
         )
         free_gb = space_result.output.strip() if space_result.success else "?"
         return ValidationResult(True, f"Drive {drive_letter}: found", f"{free_gb} GB free")
-    return ValidationResult(False, f"Drive {drive_letter}: not found")
+    detail = (
+        f"Drive {drive_letter}: was not found on this system.\n"
+        "\n"
+        "To fix this:\n"
+        f"  1. Connect the drive that should be mounted as {drive_letter}:\n"
+        "  2. Or edit config.json to change wslDriveLetter to a drive\n"
+        "     that exists on this machine (use Configure Settings)\n"
+    )
+    return ValidationResult(False, f"Drive {drive_letter}: not found", detail)
 
 
 async def check_ram(on_line: LineCallback | None = None) -> ValidationResult:

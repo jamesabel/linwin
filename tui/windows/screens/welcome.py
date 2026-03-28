@@ -4,12 +4,57 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Footer, Header, Label, Static
 from textual import work
 
 from ...shared.config import SetupConfig
 from ..tasks import validators
+
+
+class DetailModal(ModalScreen):
+    """Modal that shows the detail text for a failed check."""
+
+    CSS = """
+    DetailModal {
+        align: center middle;
+    }
+    #detail-dialog {
+        width: 80;
+        max-width: 90%;
+        height: auto;
+        max-height: 80%;
+        border: thick $error;
+        background: $surface;
+        padding: 1 2;
+    }
+    #detail-title {
+        text-style: bold;
+        color: $error;
+        margin-bottom: 1;
+    }
+    #detail-text {
+        height: auto;
+        margin-bottom: 1;
+    }
+    #detail-close {
+        width: 100%;
+    }
+    """
+
+    def __init__(self, title: str, detail: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._title = title
+        self._detail = detail
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="detail-dialog"):
+            yield Static(self._title, id="detail-title")
+            yield Static(self._detail, id="detail-text")
+            yield Button("Close", id="detail-close", variant="primary")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss()
 
 
 class WelcomeScreen(Screen):
@@ -61,11 +106,19 @@ class WelcomeScreen(Screen):
         margin: 1 3;
         color: $warning;
     }
+    .info-row-fail {
+        color: $error;
+    }
+    .info-row-fail-btn {
+        min-width: 16;
+        margin: 0 0 0 1;
+    }
     """
 
     def __init__(self, config: SetupConfig, **kwargs) -> None:
         super().__init__(**kwargs)
         self._config = config
+        self._fail_details: dict[str, tuple[str, str]] = {}  # button_id -> (title, detail)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -112,28 +165,49 @@ class WelcomeScreen(Screen):
         # Replace the detecting label with results
         detecting.remove()
 
-        rows = [
-            ("Windows Build:", build.message, build.ok),
-            ("Virtualization:", virt.message, virt.ok),
-            ("RAM:", ram.message, True),
-            ("CPUs:", cpus.message, True),
-            (f"Drive {self._config.wslDriveLetter}:", f"{drive.message} ({drive.detail})" if drive.detail else drive.message, drive.ok),
+        checks = [
+            ("build", "Windows Build:", build),
+            ("virt", "Virtualization:", virt),
+            ("ram", "RAM:", ram),
+            ("cpus", "CPUs:", cpus),
+            ("drive", f"Drive {self._config.wslDriveLetter}:", drive),
         ]
 
-        for label_text, value_text, ok in rows:
-            status = "[green]OK[/]" if ok else "[red]FAIL[/]"
-            row = Horizontal(classes="info-row")
-            await info_box.mount(row)
-            await row.mount(Label(label_text))
-            await row.mount(Label(f"{value_text}  {status}"))
+        for check_id, label_text, result in checks:
+            if result.ok:
+                display = f"{result.message}  [green]OK[/]"
+                if result.detail and result.detail != "OK":
+                    display = f"{result.message} ({result.detail})  [green]OK[/]"
+                row = Horizontal(classes="info-row")
+                await info_box.mount(row)
+                await row.mount(Label(label_text))
+                await row.mount(Label(display))
+            else:
+                row = Horizontal(classes="info-row")
+                await info_box.mount(row)
+                await row.mount(Label(label_text))
+                await row.mount(Label(f"{result.message}  [red]FAIL[/]"))
+                if result.detail:
+                    btn_id = f"btn-detail-{check_id}"
+                    self._fail_details[btn_id] = (label_text, result.detail)
+                    await row.mount(Button(
+                        "View Details",
+                        id=btn_id,
+                        variant="error",
+                        classes="info-row-fail-btn",
+                    ))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-configure":
+        btn_id = event.button.id
+        if btn_id == "btn-configure":
             from .config_editor import ConfigEditorScreen
             self.app.push_screen(ConfigEditorScreen(self._config))
-        elif event.button.id == "btn-start":
+        elif btn_id == "btn-start":
             from .phase1 import Phase1Screen
             self.app.push_screen(Phase1Screen(self._config))
+        elif btn_id and btn_id in self._fail_details:
+            title, detail = self._fail_details[btn_id]
+            self.app.push_screen(DetailModal(title, detail))
 
 
 def _config_row(label: str, value: str) -> Horizontal:
