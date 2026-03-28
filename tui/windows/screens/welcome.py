@@ -156,8 +156,8 @@ class WelcomeScreen(Screen):
                 yield _config_row("Apt Packages:", ", ".join(c.aptPackages))
 
             with Horizontal(classes="button-bar"):
-                yield Static("[Configure Settings]", id="btn-configure", classes="action-link")
-                yield Static("[Start Setup]", id="btn-start", classes="action-link")
+                yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
+                yield Static(">> Start Setup <<", id="btn-start", classes="action-link")
         yield Footer()
 
     def on_mount(self) -> None:
