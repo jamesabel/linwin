@@ -1,10 +1,10 @@
 @echo off
 setlocal
 
-echo === WSL Ubuntu GNOME Setup - Install ===
+echo === WSL Ubuntu GNOME Setup ===
 echo.
 
-:: Check if uv is already installed
+:: Ensure uv is installed
 where uv >nul 2>&1
 if %errorlevel% equ 0 (
     echo uv is already installed.
@@ -20,8 +20,8 @@ if %errorlevel% equ 0 (
 )
 echo.
 
-:: Install Python via uv
-echo Installing Python...
+:: Ensure Python is installed
+echo Ensuring Python is installed...
 uv python install
 if %errorlevel% neq 0 (
     echo ERROR: Failed to install Python.
@@ -30,8 +30,8 @@ if %errorlevel% neq 0 (
 )
 echo.
 
-:: Sync project dependencies from pyproject.toml
-echo Installing project dependencies...
+:: Sync project dependencies
+echo Syncing project dependencies...
 uv sync
 if %errorlevel% neq 0 (
     echo ERROR: Failed to install dependencies.
@@ -40,9 +40,5 @@ if %errorlevel% neq 0 (
 )
 echo.
 
-echo === Installation complete ===
-echo.
-echo To run the setup TUI:
-echo   uv run python _setup_tui.py
-echo.
-pause
+:: Launch the setup TUI
+uv run python _setup_tui.py

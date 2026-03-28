@@ -14,8 +14,7 @@ Automated scripts to install Ubuntu with WSLg GUI on Windows 11 via WSL2, with t
 The recommended way to run the setup is via the interactive TUI (Text User Interface):
 
 ```powershell
-install_dependencies.bat
-run_setup_tui.bat
+setup_wsl.bat
 ```
 
 This launches a full terminal UI with system detection, a configuration editor, step-by-step progress tracking, and a verification dashboard. The TUI handles admin elevation, the reboot boundary, and cross-WSL Linux setup automatically.
