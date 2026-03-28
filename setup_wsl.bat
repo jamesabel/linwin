@@ -1,6 +1,9 @@
 @echo off
 setlocal
 
+:: Switch to UTF-8 so Textual's Unicode characters render correctly
+chcp 65001 >nul 2>&1
+
 echo === WSL Ubuntu GNOME Setup ===
 echo.
 
@@ -41,4 +44,5 @@ if %errorlevel% neq 0 (
 echo.
 
 :: Launch the setup TUI
+set PYTHONIOENCODING=utf-8
 uv run python -m tui.windows
