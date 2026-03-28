@@ -5,7 +5,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Header, Label, Static
+from textual.widgets import Footer, Header, Label, Static
 from textual import work
 
 from ...shared.config import SetupConfig
@@ -108,8 +108,16 @@ class WelcomeScreen(Screen):
         padding: 1 2;
         align-horizontal: center;
     }
-    .button-bar Button {
+    .action-link {
         margin: 0 2;
+        padding: 0 2;
+        text-style: bold;
+    }
+    #btn-configure {
+        color: $text;
+    }
+    #btn-start {
+        color: $success;
     }
     #detecting-label {
         margin: 1 3;
@@ -148,8 +156,8 @@ class WelcomeScreen(Screen):
                 yield _config_row("Apt Packages:", ", ".join(c.aptPackages))
 
             with Horizontal(classes="button-bar"):
-                yield Button("Configure Settings", id="btn-configure", variant="default")
-                yield Button("Start Setup", id="btn-start", variant="primary")
+                yield Static("[Configure Settings]", id="btn-configure", classes="action-link")
+                yield Static("[Start Setup]", id="btn-start", classes="action-link")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -204,20 +212,20 @@ class WelcomeScreen(Screen):
                     await row.mount(Label(f"{result.message}  [red]FAIL[/]"))
 
     def on_click(self, event) -> None:
-        """Handle clicks on detail link labels."""
+        """Handle clicks on action links and detail links."""
         widget = event.widget
-        if hasattr(widget, "id") and widget.id and widget.id in self._fail_details:
-            title, detail = self._fail_details[widget.id]
-            self.app.push_screen(DetailModal(title, detail))
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        btn_id = event.button.id
-        if btn_id == "btn-configure":
+        widget_id = getattr(widget, "id", None)
+        if not widget_id:
+            return
+        if widget_id == "btn-configure":
             from .config_editor import ConfigEditorScreen
             self.app.push_screen(ConfigEditorScreen(self._config))
-        elif btn_id == "btn-start":
+        elif widget_id == "btn-start":
             from .phase1 import Phase1Screen
             self.app.push_screen(Phase1Screen(self._config))
+        elif widget_id in self._fail_details:
+            title, detail = self._fail_details[widget_id]
+            self.app.push_screen(DetailModal(title, detail))
 
 
 def _config_row(label: str, value: str) -> Horizontal:
