@@ -45,11 +45,17 @@ def check_admin() -> bool:
 
 
 def relaunch_as_admin() -> None:
-    """Re-launch this script with admin privileges via UAC."""
+    """Re-launch this module with admin privileges via UAC."""
     import ctypes
+    import os
     import sys
+    # Use -m to preserve relative imports; sys.argv may be a __main__.py
+    # path which fails when run directly.
+    args = "-m tui.windows"
+    # Pass the current working directory so the elevated process can find
+    # config.json and the tui package (ShellExecuteW defaults to System32).
+    cwd = os.getcwd()
     ctypes.windll.shell32.ShellExecuteW(
         None, "runas", sys.executable,
-        " ".join(f'"{a}"' for a in sys.argv),
-        None, 1,  # SW_SHOWNORMAL
+        args, cwd, 1,  # SW_SHOWNORMAL
     )
