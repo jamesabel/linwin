@@ -1,0 +1,5 @@
+.idea/
+*.tar
+*.vhdx
+__pycache__/
+*.pyc

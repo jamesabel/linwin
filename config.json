@@ -1,0 +1,22 @@
+{
+    "distroName": "Ubuntu-22.04",
+    "distroImportName": "Ubuntu",
+    "wslInstallPath": "V:\\WSL\\Ubuntu",
+    "wslDriveLetter": "V",
+    "wslconfig": {
+        "memory": "16GB",
+        "processors": 8,
+        "swap": "8GB",
+        "swapFile": "V:\\WSL\\swap.vhdx",
+        "guiApplications": true,
+        "defaultVhdSize": "200GB",
+        "sparseVhd": true
+    },
+    "snaps": [
+        { "name": "code", "classic": true },
+        { "name": "intellij-idea-community", "classic": true },
+        { "name": "pycharm-community", "classic": true }
+    ],
+    "aptPackages": ["nautilus", "x11-apps"],
+    "enableSystemd": true
+}
