@@ -9,9 +9,9 @@ Automated scripts to install Ubuntu with WSLg GUI on Windows 11 via WSL2, with t
 - **Dedicated drive** for WSL storage (default: V: drive)
 - **Administrator access** on Windows
 
-## Quick Start (TUI)
+## Quick Start
 
-The recommended way to run the setup is via the interactive TUI (Text User Interface):
+Run the setup via the interactive TUI (Text User Interface):
 
 ```powershell
 setup_wsl.bat
@@ -24,42 +24,6 @@ A standalone Linux TUI is also available for running inside WSL Ubuntu directly:
 ```bash
 pip3 install textual
 python3 setup_tui_linux.py
-```
-
-## Quick Start (Scripts)
-
-### Step 1: Enable Windows features (requires reboot)
-
-Right-click `setup_windows_phase1.ps1` > **Run with PowerShell**, or in an admin PowerShell:
-
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force
-.\setup_windows_phase1.ps1
-```
-
-This validates your system and enables WSL and Virtual Machine Platform. **Reboot when prompted.**
-
-### Step 2: Install Ubuntu and configure everything
-
-After rebooting, run `setup_windows_phase2.ps1` as Administrator:
-
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force
-.\setup_windows_phase2.ps1
-```
-
-This will:
-- Install/update WSL2 and Ubuntu 22.04
-- Move the distro to your V: drive
-- Write optimized `.wslconfig` settings
-- Enable systemd inside Ubuntu
-- Install IDEs (VS Code, IntelliJ IDEA, PyCharm) and Nautilus file manager via snap
-- Verify WSLg is working
-
-### Step 3: Verify
-
-```powershell
-.\verify_setup.ps1
 ```
 
 ## Configuration
@@ -81,22 +45,11 @@ Edit `config.json` before running the scripts to customize:
 
 ## Scripts
 
-### TUI (Python Textual)
-
 | Script | Environment | Description |
 |--------|-------------|-------------|
+| `setup_wsl.bat` | Windows | Entry point — installs dependencies, then launches the TUI |
 | `_setup_tui.py` | Windows | Interactive TUI — guides entire setup with live progress |
 | `setup_tui_linux.py` | WSL Ubuntu | Interactive TUI for Linux-side setup (also supports `--headless`) |
-
-### PowerShell / Bash
-
-| Script | Environment | Description |
-|--------|-------------|-------------|
-| `setup_windows_phase1.ps1` | Windows (admin) | Enable WSL/VM features, prompt reboot |
-| `setup_windows_phase2.ps1` | Windows (admin) | Install Ubuntu, move to V:, configure, run Linux setup |
-| `_setup_ubuntu.sh` | WSL Ubuntu | Install packages, enable systemd, verify WSLg |
-| `verify_setup.ps1` | Windows | Run all verification checks |
-| `_verify_setup.sh` | WSL Ubuntu | Linux-side verification checks |
 
 ## Detailed Guide
 
