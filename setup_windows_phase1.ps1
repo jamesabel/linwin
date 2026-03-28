@@ -46,11 +46,45 @@ if ($buildNumber -lt 19044) {
 }
 Write-Host "  Windows build $buildNumber - OK" -ForegroundColor Green
 
-# Check virtualization
-$virtEnabled = (Get-CimInstance Win32_Processor).VirtualizationFirmwareEnabled
+# Check virtualization — gather full diagnostic info
+$cpu = Get-CimInstance Win32_Processor
+$virtEnabled = $cpu.VirtualizationFirmwareEnabled
+$cpuName = $cpu.Name
+$cpuMfr = $cpu.Manufacturer
+$hypervisorPresent = (Get-CimInstance Win32_ComputerSystem).HypervisorPresent
+$wslState = (Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -ErrorAction SilentlyContinue).State
+$vmState = (Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction SilentlyContinue).State
+$hvState = (Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All -ErrorAction SilentlyContinue).State
+
 if (-not $virtEnabled) {
+    $isIntel = $cpuMfr -match "Intel|GenuineIntel"
+    if ($isIntel) {
+        $biosTech = "Intel VT-x"
+        $biosMenuHint = "look under Advanced > CPU Configuration or Security > Virtualization Technology"
+    } else {
+        $biosTech = "AMD-V (SVM)"
+        $biosMenuHint = "look under Advanced > CPU Configuration or M.I.T. > SVM Mode"
+    }
+
+    Write-Host ""
     Write-Host "[ERROR] Hardware virtualization is not enabled." -ForegroundColor Red
-    Write-Host "  Please enable Intel VT-x or AMD-V in your BIOS/UEFI settings and try again." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Virtualization diagnostic:" -ForegroundColor Yellow
+    Write-Host "    Processor:                $cpuName"
+    Write-Host "    BIOS virtualization:      DISABLED  <-- action needed" -ForegroundColor Red
+    Write-Host "    Hypervisor running:       $(if ($hypervisorPresent) {'Yes'} else {'No'})"
+    Write-Host "    WSL feature:              $wslState"
+    Write-Host "    Virtual Machine Platform: $vmState"
+    Write-Host "    Hyper-V:                  $hvState"
+    Write-Host ""
+    Write-Host "  Your processor supports $biosTech but it is turned off in BIOS/UEFI." -ForegroundColor Yellow
+    Write-Host "  To fix this:" -ForegroundColor Yellow
+    Write-Host "    1. Restart your PC and enter BIOS/UEFI setup (usually DEL, F2, or F10 at boot)" -ForegroundColor Yellow
+    Write-Host "    2. In the BIOS menus, $biosMenuHint" -ForegroundColor Yellow
+    Write-Host "    3. Set $biosTech to Enabled" -ForegroundColor Yellow
+    Write-Host "    4. Save and exit (usually F10)" -ForegroundColor Yellow
+    Write-Host "    5. Re-run this setup after Windows boots" -ForegroundColor Yellow
+    Write-Host ""
     Read-Host "Press Enter to exit"
     exit 1
 }

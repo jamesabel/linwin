@@ -93,7 +93,10 @@ class Phase1Screen(Screen):
         result = await validators.check_virtualization(on_line)
         tasks.set_status("check_virt", "done" if result.ok else "failed")
         if not result.ok:
-            log.write_error(f"FAILED: {result.message}. {result.detail}")
+            log.write_error(f"FAILED: {result.message}")
+            if result.detail:
+                for detail_line in result.detail.splitlines():
+                    log.write_error(detail_line)
             status.update("[red]Enable virtualization in BIOS/UEFI and try again.[/]")
             return
 

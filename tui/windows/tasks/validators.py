@@ -33,17 +33,75 @@ async def check_windows_build(on_line: LineCallback | None = None) -> Validation
 
 
 async def check_virtualization(on_line: LineCallback | None = None) -> ValidationResult:
-    """Check that hardware virtualization is enabled."""
-    result = await run_powershell(
-        "(Get-CimInstance Win32_Processor).VirtualizationFirmwareEnabled",
-        on_line=on_line,
-    )
+    """Check hardware virtualization and related features, with detailed diagnostics on failure."""
+    # Gather all virtualization-related info in one PowerShell call
+    diag_script = """
+$cpu = Get-CimInstance Win32_Processor
+$fw = $cpu.VirtualizationFirmwareEnabled
+$mfr = $cpu.Manufacturer
+$name = $cpu.Name
+$hypervisor = (Get-CimInstance Win32_ComputerSystem).HypervisorPresent
+$wslState = (Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -ErrorAction SilentlyContinue).State
+$vmState = (Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction SilentlyContinue).State
+$hvState = (Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All -ErrorAction SilentlyContinue).State
+Write-Output "FW=$fw"
+Write-Output "MFR=$mfr"
+Write-Output "CPU=$name"
+Write-Output "HYPERVISOR=$hypervisor"
+Write-Output "WSL=$wslState"
+Write-Output "VMPLATFORM=$vmState"
+Write-Output "HYPERV=$hvState"
+""".strip()
+    result = await run_powershell(diag_script, on_line=on_line)
     if not result.success:
         return ValidationResult(False, "Could not check virtualization")
-    output = result.output.strip().lower()
-    if output == "true":
+
+    # Parse diagnostic output
+    info: dict[str, str] = {}
+    for line in result.output.strip().splitlines():
+        if "=" in line:
+            key, _, val = line.partition("=")
+            info[key.strip()] = val.strip()
+
+    fw_enabled = info.get("FW", "").lower() == "true"
+    hypervisor_present = info.get("HYPERVISOR", "").lower() == "true"
+    cpu_name = info.get("CPU", "Unknown")
+    mfr = info.get("MFR", "").lower()
+    wsl_state = info.get("WSL", "Unknown")
+    vm_state = info.get("VMPLATFORM", "Unknown")
+    hv_state = info.get("HYPERV", "Unknown")
+
+    is_intel = "intel" in mfr or "genuineintel" in mfr
+    bios_tech = "Intel VT-x" if is_intel else "AMD-V (SVM)"
+    bios_menu_hint = (
+        "look under Advanced > CPU Configuration or Security > Virtualization Technology"
+        if is_intel
+        else "look under Advanced > CPU Configuration or M.I.T. > SVM Mode"
+    )
+
+    if fw_enabled:
         return ValidationResult(True, "Virtualization enabled")
-    return ValidationResult(False, "Virtualization not enabled", "Enable Intel VT-x or AMD-V in BIOS/UEFI")
+
+    # Build detailed failure report
+    lines = [
+        "Virtualization diagnostic:",
+        f"  Processor:              {cpu_name}",
+        f"  BIOS virtualization:    {'Enabled' if fw_enabled else 'DISABLED  <-- action needed'}",
+        f"  Hypervisor running:     {'Yes' if hypervisor_present else 'No'}",
+        f"  WSL feature:            {wsl_state}",
+        f"  Virtual Machine Platform: {vm_state}",
+        f"  Hyper-V:                {hv_state}",
+        "",
+        f"Your processor supports {bios_tech} but it is turned off in BIOS/UEFI.",
+        "To fix this:",
+        "  1. Restart your PC and enter BIOS/UEFI setup (usually DEL, F2, or F10 at boot)",
+        f"  2. In the BIOS menus, {bios_menu_hint}",
+        f"  3. Set {bios_tech} to Enabled",
+        "  4. Save and exit (usually F10)",
+        "  5. Re-run this setup after Windows boots",
+    ]
+    detail = "\n".join(lines)
+    return ValidationResult(False, "Virtualization not enabled in BIOS/UEFI", detail)
 
 
 async def check_drive_exists(drive_letter: str, on_line: LineCallback | None = None) -> ValidationResult:
