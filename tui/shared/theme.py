@@ -81,9 +81,9 @@ Screen {
 .info-warn { color: $warning; }
 """
 
-# Task status icons
-ICON_PENDING = "\u25cb"   # ○
-ICON_RUNNING = "\u25d1"   # ◑
-ICON_DONE = "\u25cf"      # ●
-ICON_FAILED = "\u2715"    # ✕
-ICON_SKIPPED = "\u2298"   # ⊘
+# Task status icons (ASCII-safe for Windows terminals)
+ICON_PENDING = "[ ]"
+ICON_RUNNING = "[~]"
+ICON_DONE = "[x]"
+ICON_FAILED = "[!]"
+ICON_SKIPPED = "[-]"

@@ -15,6 +15,11 @@ from ..tasks import validators
 class DetailModal(ModalScreen):
     """Modal that shows the detail text for a failed check."""
 
+    BINDINGS = [
+        ("escape", "close", "Close"),
+        ("q", "close", "Close"),
+    ]
+
     CSS = """
     DetailModal {
         align: center middle;
@@ -51,7 +56,10 @@ class DetailModal(ModalScreen):
         with Vertical(id="detail-dialog"):
             yield Static(self._title, id="detail-title")
             yield Static(self._detail, id="detail-text")
-            yield Button("Close", id="detail-close", variant="primary")
+            yield Button("Close (Esc)", id="detail-close", variant="primary")
+
+    def action_close(self) -> None:
+        self.dismiss()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss()
