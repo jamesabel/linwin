@@ -18,7 +18,8 @@ class WindowsSetupApp(App):
     CSS = SHARED_CSS
 
     BINDINGS = [
-        ("q", "quit", "Quit"),
+        ("ctrl+q", "quit", "Quit (Ctrl+Q)"),
+        ("escape", "quit", "Quit (Escape)"),
     ]
 
     def __init__(self, config: SetupConfig, **kwargs) -> None:

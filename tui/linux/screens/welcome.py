@@ -79,9 +79,10 @@ class WelcomeScreen(Screen):
                 yield _info_row("Snaps:", snap_names)
                 yield _info_row("Enable Systemd:", "Yes" if c.enableSystemd else "No")
 
-            with Horizontal(classes="button-bar"):
+            with Vertical(classes="button-bar"):
                 yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
                 yield Static(">> Start Setup <<", id="btn-start", classes="action-link")
+                yield Static(">> Quit (Escape) <<", id="btn-quit", classes="action-link")
 
     def on_mount(self) -> None:
         self.detect_system_info()
@@ -150,6 +151,8 @@ class WelcomeScreen(Screen):
         elif widget_id == "btn-start":
             from .setup import SetupScreen
             self.app.push_screen(SetupScreen(self._config))
+        elif widget_id == "btn-quit":
+            self.app.exit()
 
 
 def _info_row(label: str, value: str) -> Horizontal:

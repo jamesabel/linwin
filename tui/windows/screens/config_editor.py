@@ -103,9 +103,9 @@ class ConfigEditorScreen(Screen):
                 yield Static("Apt Packages", classes="section-header")
                 yield _field("Packages:", ", ".join(c.aptPackages), "input-apt-packages")
 
-            with Horizontal(classes="button-bar"):
+            with Vertical(classes="button-bar"):
                 yield Static(">> Save & Back <<", id="btn-save", classes="action-link")
-                yield Static(">> Cancel <<", id="btn-cancel", classes="action-link")
+                yield Static(">> Cancel (Escape) <<", id="btn-cancel", classes="action-link")
 
     def action_cancel(self) -> None:
         self.app.pop_screen()

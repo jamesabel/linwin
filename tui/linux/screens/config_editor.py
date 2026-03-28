@@ -83,9 +83,9 @@ class ConfigEditorScreen(Screen):
                 yield Static("Options", classes="section-header")
                 yield AsciiCheckbox("Enable Systemd", value=c.enableSystemd, id="chk-systemd")
 
-            with Horizontal(classes="button-bar"):
+            with Vertical(classes="button-bar"):
                 yield Static(">> Save & Back <<", id="btn-save", classes="action-link")
-                yield Static(">> Cancel <<", id="btn-cancel", classes="action-link")
+                yield Static(">> Cancel (Escape) <<", id="btn-cancel", classes="action-link")
 
     def action_cancel(self) -> None:
         self.app.pop_screen()

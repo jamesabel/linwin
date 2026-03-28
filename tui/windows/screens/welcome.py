@@ -154,9 +154,10 @@ class WelcomeScreen(Screen):
                 yield _config_row("Snaps:", snap_names)
                 yield _config_row("Apt Packages:", ", ".join(c.aptPackages))
 
-            with Horizontal(classes="button-bar"):
+            with Vertical(classes="button-bar"):
                 yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
                 yield Static(">> Start Setup <<", id="btn-start", classes="action-link")
+                yield Static(">> Quit (Escape) <<", id="btn-quit", classes="action-link")
 
     def on_mount(self) -> None:
         self.detect_system_info()
@@ -221,6 +222,8 @@ class WelcomeScreen(Screen):
         elif widget_id == "btn-start":
             from .phase1 import Phase1Screen
             self.app.push_screen(Phase1Screen(self._config))
+        elif widget_id == "btn-quit":
+            self.app.exit()
         elif widget_id in self._fail_details:
             title, detail = self._fail_details[widget_id]
             self.app.push_screen(DetailModal(title, detail))
