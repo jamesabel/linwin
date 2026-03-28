@@ -2,9 +2,9 @@
 """Linux-side TUI entry point for WSL Ubuntu setup.
 
 Usage:
-    python3 setup_tui_linux.py                    # Interactive TUI
-    python3 setup_tui_linux.py --headless --phase 1  # Headless: enable systemd
-    python3 setup_tui_linux.py --headless --phase 2  # Headless: install packages
+    python3 -m tui.linux                    # Interactive TUI
+    python3 -m tui.linux --headless --phase 1  # Headless: enable systemd
+    python3 -m tui.linux --headless --phase 2  # Headless: install packages
 """
 
 import argparse
@@ -17,8 +17,8 @@ from pathlib import Path
 
 def find_config() -> dict:
     """Find and load config.json."""
-    script_dir = Path(__file__).resolve().parent
-    config_path = script_dir / "config.json"
+    project_root = Path(__file__).resolve().parent.parent.parent
+    config_path = project_root / "config.json"
     if not config_path.exists():
         print(f"ERROR:config.json not found at {config_path}", flush=True)
         sys.exit(1)
@@ -187,8 +187,8 @@ def main() -> None:
             sys.exit(1)
     else:
         # Interactive TUI mode
-        from tui.shared.config import SetupConfig
-        from tui.linux.app import LinuxSetupApp
+        from ..shared.config import SetupConfig
+        from .app import LinuxSetupApp
 
         config = SetupConfig.from_dict(config_data)
         app = LinuxSetupApp(config)

@@ -41,4 +41,4 @@ if %errorlevel% neq 0 (
 echo.
 
 :: Launch the setup TUI
-uv run python _setup_tui.py
+uv run python -m tui.windows

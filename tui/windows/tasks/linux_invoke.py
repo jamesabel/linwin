@@ -36,7 +36,7 @@ async def run_linux_headless(
     on_task_update: Optional[TaskUpdateCallback] = None,
 ) -> SubprocessResult:
     """
-    Invoke setup_tui_linux.py --headless --phase N inside WSL.
+    Invoke python3 -m tui.linux --headless --phase N inside WSL.
 
     The headless script outputs structured lines:
         TASK:task_id:status
@@ -44,7 +44,7 @@ async def run_linux_headless(
         ERROR:message
     """
     wsl_path = windows_to_wsl_path(script_dir_win)
-    cmd = f"cd '{wsl_path}' && python3 setup_tui_linux.py --headless --phase {phase}"
+    cmd = f"cd '{wsl_path}' && python3 -m tui.linux --headless --phase {phase}"
 
     async def parse_line(line: str, stream: str) -> None:
         if line.startswith("TASK:"):

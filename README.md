@@ -23,7 +23,7 @@ A standalone Linux TUI is also available for running inside WSL Ubuntu directly:
 
 ```bash
 pip3 install textual
-python3 setup_tui_linux.py
+python3 -m tui.linux
 ```
 
 ## Configuration
@@ -48,8 +48,8 @@ Edit `config.json` before running the scripts to customize:
 | Script | Environment | Description |
 |--------|-------------|-------------|
 | `setup_wsl.bat` | Windows | Entry point — installs dependencies, then launches the TUI |
-| `_setup_tui.py` | Windows | Interactive TUI — guides entire setup with live progress |
-| `setup_tui_linux.py` | WSL Ubuntu | Interactive TUI for Linux-side setup (also supports `--headless`) |
+| `tui/windows/` | Windows | Interactive TUI package — guides entire setup with live progress |
+| `tui/linux/` | WSL Ubuntu | Interactive TUI package for Linux-side setup (also supports `--headless`) |
 
 ## Detailed Guide
 

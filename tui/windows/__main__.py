@@ -5,8 +5,8 @@ import sys
 
 
 def main() -> None:
-    from tui.shared.config import load_config
-    from tui.windows.app import WindowsSetupApp, check_admin, relaunch_as_admin
+    from ..shared.config import load_config
+    from .app import WindowsSetupApp, check_admin, relaunch_as_admin
 
     if not check_admin():
         print("This setup requires Administrator privileges.")
