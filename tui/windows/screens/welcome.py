@@ -194,16 +194,18 @@ class WelcomeScreen(Screen):
                 row = Horizontal(classes="info-row")
                 await info_box.mount(row)
                 await row.mount(Label(label_text))
-                await row.mount(Label(f"{result.message}  [red]FAIL[/]"))
                 if result.detail:
                     btn_id = f"btn-detail-{check_id}"
                     self._fail_details[btn_id] = (label_text, result.detail)
+                    await row.mount(Label(f"{result.message}  [red]FAIL[/] - "))
                     await row.mount(Button(
-                        "View Details",
+                        "Click here for instructions",
                         id=btn_id,
                         variant="error",
                         classes="info-row-fail-btn",
                     ))
+                else:
+                    await row.mount(Label(f"{result.message}  [red]FAIL[/]"))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
