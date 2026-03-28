@@ -8,19 +8,15 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import DataTable, Label, RichLog, Static
 
-from .theme import ICON_DONE, ICON_FAILED, ICON_PENDING, ICON_RUNNING, ICON_SKIPPED
 
 
 class TaskRow(Widget):
-    """A single task row showing icon, name, and status."""
+    """A single task row showing name and status text."""
 
     DEFAULT_CSS = """
     TaskRow {
         height: 1;
         layout: horizontal;
-    }
-    TaskRow .task-icon {
-        width: 3;
     }
     TaskRow .task-name {
         width: 1fr;
@@ -32,14 +28,6 @@ class TaskRow(Widget):
     """
 
     status: reactive[str] = reactive("pending")
-
-    ICONS = {
-        "pending": ICON_PENDING,
-        "running": ICON_RUNNING,
-        "done": ICON_DONE,
-        "failed": ICON_FAILED,
-        "skipped": ICON_SKIPPED,
-    }
 
     STATUS_TEXT = {
         "pending": "Pending",
@@ -55,22 +43,16 @@ class TaskRow(Widget):
         self.task_name = name
 
     def compose(self) -> ComposeResult:
-        yield Label(self.ICONS["pending"], classes="task-icon")
         yield Label(self.task_name, classes="task-name")
         yield Label(self.STATUS_TEXT["pending"], classes="task-status")
 
     def watch_status(self, value: str) -> None:
         try:
-            icon_label = self.query_one(".task-icon", Label)
             status_label = self.query_one(".task-status", Label)
-            icon_label.update(self.ICONS.get(value, ICON_PENDING))
             status_label.update(self.STATUS_TEXT.get(value, value))
 
-            # Update icon color class
-            for s in self.ICONS:
-                icon_label.remove_class(f"task-icon-{s}")
+            for s in self.STATUS_TEXT:
                 status_label.remove_class(f"task-status-{s}")
-            icon_label.add_class(f"task-icon-{value}")
             status_label.add_class(f"task-status-{value}")
         except Exception:
             pass  # Widget not yet mounted

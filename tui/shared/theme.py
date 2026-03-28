@@ -24,12 +24,6 @@ Screen {
     padding: 0 1;
 }
 
-.task-icon-pending { color: $text-muted; }
-.task-icon-running { color: $warning; }
-.task-icon-done { color: $success; }
-.task-icon-failed { color: $error; }
-.task-icon-skipped { color: $text-muted; }
-
 .task-status-pending { color: $text-muted; }
 .task-status-running { color: $warning; }
 .task-status-done { color: $success; }
@@ -80,10 +74,3 @@ Screen {
 .info-fail { color: $error; }
 .info-warn { color: $warning; }
 """
-
-# Task status icons
-ICON_PENDING = "-"
-ICON_RUNNING = "[yellow]~[/]"
-ICON_DONE = "[green]OK[/]"
-ICON_FAILED = "[red]FAIL[/]"
-ICON_SKIPPED = "[dim]skip[/]"
