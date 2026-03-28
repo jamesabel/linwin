@@ -82,8 +82,9 @@ Screen {
 """
 
 # Task status icons (ASCII-safe for Windows terminals)
-ICON_PENDING = "[ ]"
-ICON_RUNNING = "[~]"
-ICON_DONE = "[x]"
-ICON_FAILED = "[!]"
-ICON_SKIPPED = "[-]"
+# Escaped for Rich markup (\\[ prevents bracket interpretation)
+ICON_PENDING = "\\[ ]"
+ICON_RUNNING = "\\[~]"
+ICON_DONE = "\\[x]"
+ICON_FAILED = "\\[!]"
+ICON_SKIPPED = "\\[-]"
