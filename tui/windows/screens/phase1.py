@@ -7,7 +7,7 @@ import asyncio
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Static
+from textual.widgets import Static
 from textual import work
 
 from ...shared.config import SetupConfig
@@ -41,8 +41,19 @@ class Phase1Screen(Screen):
         padding: 1 2;
         align-horizontal: center;
     }
-    .button-bar Button {
+    .action-link {
         margin: 0 2;
+        padding: 0 2;
+        text-style: bold;
+    }
+    .hidden {
+        display: none;
+    }
+    #btn-phase2 {
+        color: $success;
+    }
+    #btn-reboot {
+        color: $warning;
     }
     """
 
@@ -52,15 +63,13 @@ class Phase1Screen(Screen):
         self._needs_reboot = False
 
     def compose(self) -> ComposeResult:
-        yield Header()
         with VerticalScroll():
             yield TaskListWidget(PHASE1_TASKS, id="phase1-tasks")
             yield LogPanel(id="phase1-log")
             yield Static("", id="phase1-status")
             with Horizontal(classes="button-bar", id="phase1-buttons"):
-                yield Button("Continue to Phase 2", id="btn-phase2", variant="primary", disabled=True)
-                yield Button("Reboot Now", id="btn-reboot", variant="warning", disabled=True)
-        yield Footer()
+                yield Static(">> Continue to Phase 2 <<", id="btn-phase2", classes="action-link hidden")
+                yield Static(">> Reboot Now <<", id="btn-reboot", classes="action-link hidden")
 
     def on_mount(self) -> None:
         self.run_phase1()
@@ -156,7 +165,7 @@ class Phase1Screen(Screen):
         if self._needs_reboot:
             log.write_success("Features enabled. A reboot is required.")
             status.update("[yellow]Reboot required. After reboot, re-run this TUI to continue at Phase 2.[/]")
-            self.query_one("#btn-reboot", Button).disabled = False
+            self.query_one("#btn-reboot").remove_class("hidden")
 
             # Save state for post-reboot resume
             save_state(SetupState(
@@ -167,13 +176,17 @@ class Phase1Screen(Screen):
         else:
             log.write_success("All features already enabled. No reboot needed.")
             status.update("[green]Phase 1 complete. Ready for Phase 2.[/]")
-            self.query_one("#btn-phase2", Button).disabled = False
+            self.query_one("#btn-phase2").remove_class("hidden")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-phase2":
+    def on_click(self, event) -> None:
+        widget = event.widget
+        widget_id = getattr(widget, "id", None)
+        if not widget_id:
+            return
+        if widget_id == "btn-phase2":
             from .phase2 import Phase2Screen
             self.app.switch_screen(Phase2Screen(self._config))
-        elif event.button.id == "btn-reboot":
+        elif widget_id == "btn-reboot":
             import subprocess
             subprocess.Popen(["shutdown", "/r", "/t", "5"])
             self.app.exit()

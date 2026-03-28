@@ -7,7 +7,7 @@ import os
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Label, Static
+from textual.widgets import Label, Static
 from textual import work
 
 from ...shared.config import SetupConfig
@@ -19,13 +19,13 @@ class WelcomeScreen(Screen):
 
     CSS = """
     #welcome-info {
-        border: solid $primary;
+        border: ascii $primary;
         padding: 1 2;
         margin: 1 2;
         height: auto;
     }
     #welcome-config {
-        border: solid $primary;
+        border: ascii $primary;
         padding: 1 2;
         margin: 1 2;
         height: auto;
@@ -48,8 +48,16 @@ class WelcomeScreen(Screen):
         padding: 1 2;
         align-horizontal: center;
     }
-    .button-bar Button {
+    .action-link {
         margin: 0 2;
+        padding: 0 2;
+        text-style: bold;
+    }
+    #btn-configure {
+        color: $text;
+    }
+    #btn-start {
+        color: $success;
     }
     """
 
@@ -58,7 +66,6 @@ class WelcomeScreen(Screen):
         self._config = config
 
     def compose(self) -> ComposeResult:
-        yield Header()
         with VerticalScroll():
             with Vertical(id="welcome-info"):
                 yield Static("System Information", classes="section-header")
@@ -73,9 +80,8 @@ class WelcomeScreen(Screen):
                 yield _info_row("Enable Systemd:", "Yes" if c.enableSystemd else "No")
 
             with Horizontal(classes="button-bar"):
-                yield Button("Configure Settings", id="btn-configure", variant="default")
-                yield Button("Start Setup", id="btn-start", variant="primary")
-        yield Footer()
+                yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
+                yield Static(">> Start Setup <<", id="btn-start", classes="action-link")
 
     def on_mount(self) -> None:
         self.detect_system_info()
@@ -133,11 +139,15 @@ class WelcomeScreen(Screen):
             await row.mount(Label(label_text))
             await row.mount(Label(f"{value_text}{status_str}"))
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-configure":
+    def on_click(self, event) -> None:
+        widget = event.widget
+        widget_id = getattr(widget, "id", None)
+        if not widget_id:
+            return
+        if widget_id == "btn-configure":
             from .config_editor import ConfigEditorScreen
             self.app.push_screen(ConfigEditorScreen(self._config))
-        elif event.button.id == "btn-start":
+        elif widget_id == "btn-start":
             from .setup import SetupScreen
             self.app.push_screen(SetupScreen(self._config))
 

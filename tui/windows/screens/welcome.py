@@ -5,7 +5,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Footer, Header, Label, Static
+from textual.widgets import Label, Static
 from textual import work
 
 from ...shared.config import SetupConfig
@@ -29,7 +29,7 @@ class DetailModal(ModalScreen):
         max-width: 90%;
         height: auto;
         max-height: 80%;
-        border: thick $error;
+        border: ascii $error;
         background: $surface;
         padding: 1 2;
     }
@@ -71,13 +71,13 @@ class WelcomeScreen(Screen):
 
     CSS = """
     #welcome-info {
-        border: solid $primary;
+        border: ascii $primary;
         padding: 1 2;
         margin: 1 2;
         height: auto;
     }
     #welcome-config {
-        border: solid $primary;
+        border: ascii $primary;
         padding: 1 2;
         margin: 1 2;
         height: auto;
@@ -134,7 +134,6 @@ class WelcomeScreen(Screen):
         self._fail_details: dict[str, tuple[str, str]] = {}  # button_id -> (title, detail)
 
     def compose(self) -> ComposeResult:
-        yield Header()
         with VerticalScroll():
             with Vertical(id="welcome-info"):
                 yield Static("System Information", classes="section-header")
@@ -158,7 +157,6 @@ class WelcomeScreen(Screen):
             with Horizontal(classes="button-bar"):
                 yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
                 yield Static(">> Start Setup <<", id="btn-start", classes="action-link")
-        yield Footer()
 
     def on_mount(self) -> None:
         self.detect_system_info()

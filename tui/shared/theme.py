@@ -5,8 +5,25 @@ Screen {
     background: $surface;
 }
 
+/* Force all widgets to use ASCII borders instead of Unicode */
+Input {
+    border: none;
+    height: 1;
+    background: $surface;
+}
+Input:focus {
+    border: none;
+    background: $boost;
+}
+DataTable {
+    border: ascii $primary;
+}
+ProgressBar {
+    border: ascii $primary;
+}
+
 .section-box {
-    border: solid $primary;
+    border: ascii $primary;
     padding: 1 2;
     margin: 1 2;
     height: auto;
@@ -32,7 +49,7 @@ Screen {
 
 /* Log panel */
 .log-panel {
-    border: solid $secondary;
+    border: ascii $secondary;
     height: 1fr;
     min-height: 8;
 }
@@ -49,8 +66,10 @@ Screen {
     align-horizontal: center;
 }
 
-.button-row Button {
+.button-row .action-link {
     margin: 0 2;
+    padding: 0 2;
+    text-style: bold;
 }
 
 /* Info grid */

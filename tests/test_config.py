@@ -124,8 +124,8 @@ class TestLoadConfig:
     def test_load_project_config(self):
         config = load_config(CONFIG_JSON)
         assert config.distroName == "Ubuntu-22.04"
-        assert len(config.snaps) == 3
-        assert config.snaps[0].name == "code"
+        assert len(config.snaps) == 2
+        assert config.snaps[0].name == "intellij-idea-community"
 
     def test_load_missing_file(self, tmp_path):
         with pytest.raises(FileNotFoundError):

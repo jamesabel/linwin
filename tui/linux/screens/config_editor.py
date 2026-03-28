@@ -5,17 +5,22 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Static
+from textual.widgets import Input, Label, Static
 
 from ...shared.config import SetupConfig, SnapPackage, save_config
+from ...shared.widgets import AsciiCheckbox
 
 
 class ConfigEditorScreen(Screen):
     """Edit Linux-relevant config.json values."""
 
+    BINDINGS = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
     CSS = """
     .editor-section {
-        border: solid $primary;
+        border: ascii $primary;
         padding: 1 2;
         margin: 1 2;
         height: auto;
@@ -26,12 +31,11 @@ class ConfigEditorScreen(Screen):
         margin-bottom: 1;
     }
     .field-row {
-        height: 3;
+        height: 1;
         layout: horizontal;
     }
     .field-row Label {
         width: 20;
-        padding: 1 0;
         text-style: bold;
     }
     .field-row Input {
@@ -42,8 +46,13 @@ class ConfigEditorScreen(Screen):
         padding: 1 2;
         align-horizontal: center;
     }
-    .button-bar Button {
+    .action-link {
         margin: 0 2;
+        padding: 0 2;
+        text-style: bold;
+    }
+    #btn-save {
+        color: $success;
     }
     """
 
@@ -59,13 +68,12 @@ class ConfigEditorScreen(Screen):
 
     def compose(self) -> ComposeResult:
         c = self._config
-        yield Header()
         with VerticalScroll():
             with Vertical(classes="editor-section"):
                 yield Static("IDE Selection (Snaps)", classes="section-header")
                 selected = {s.name for s in c.snaps}
                 for snap_id, snap_label in self.AVAILABLE_SNAPS:
-                    yield Checkbox(snap_label, value=snap_id in selected, id=f"snap-{snap_id}")
+                    yield AsciiCheckbox(snap_label, value=snap_id in selected, id=f"snap-{snap_id}")
 
             with Vertical(classes="editor-section"):
                 yield Static("Apt Packages", classes="section-header")
@@ -73,18 +81,24 @@ class ConfigEditorScreen(Screen):
 
             with Vertical(classes="editor-section"):
                 yield Static("Options", classes="section-header")
-                yield Checkbox("Enable Systemd", value=c.enableSystemd, id="chk-systemd")
+                yield AsciiCheckbox("Enable Systemd", value=c.enableSystemd, id="chk-systemd")
 
             with Horizontal(classes="button-bar"):
-                yield Button("Save & Back", id="btn-save", variant="primary")
-                yield Button("Cancel", id="btn-cancel", variant="default")
-        yield Footer()
+                yield Static(">> Save & Back <<", id="btn-save", classes="action-link")
+                yield Static(">> Cancel <<", id="btn-cancel", classes="action-link")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-save":
+    def action_cancel(self) -> None:
+        self.app.pop_screen()
+
+    def on_click(self, event) -> None:
+        widget = event.widget
+        widget_id = getattr(widget, "id", None)
+        if not widget_id:
+            return
+        if widget_id == "btn-save":
             self._save_config()
             self.app.pop_screen()
-        elif event.button.id == "btn-cancel":
+        elif widget_id == "btn-cancel":
             self.app.pop_screen()
 
     def _save_config(self) -> None:
@@ -93,7 +107,7 @@ class ConfigEditorScreen(Screen):
         # Snaps
         snaps = []
         for snap_id, _ in self.AVAILABLE_SNAPS:
-            cb = self.query_one(f"#snap-{snap_id}", Checkbox)
+            cb = self.query_one(f"#snap-{snap_id}", AsciiCheckbox)
             if cb.value:
                 snaps.append(SnapPackage(snap_id, True))
         c.snaps = snaps
@@ -103,7 +117,7 @@ class ConfigEditorScreen(Screen):
         c.aptPackages = [p.strip() for p in apt_str.split(",") if p.strip()]
 
         # Systemd
-        c.enableSystemd = self.query_one("#chk-systemd", Checkbox).value
+        c.enableSystemd = self.query_one("#chk-systemd", AsciiCheckbox).value
 
         save_config(c)
 

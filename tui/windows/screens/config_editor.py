@@ -5,17 +5,22 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Static
+from textual.widgets import Input, Label, Static
 
 from ...shared.config import SetupConfig, SnapPackage, save_config
+from ...shared.widgets import AsciiCheckbox
 
 
 class ConfigEditorScreen(Screen):
     """Edit config.json values interactively."""
 
+    BINDINGS = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
     CSS = """
     .editor-section {
-        border: solid $primary;
+        border: ascii $primary;
         padding: 1 2;
         margin: 1 2;
         height: auto;
@@ -26,13 +31,11 @@ class ConfigEditorScreen(Screen):
         margin-bottom: 1;
     }
     .field-row {
-        height: 3;
+        height: 1;
         layout: horizontal;
-        margin-bottom: 0;
     }
     .field-row Label {
         width: 20;
-        padding: 1 0;
         text-style: bold;
     }
     .field-row Input {
@@ -47,8 +50,16 @@ class ConfigEditorScreen(Screen):
         padding: 1 2;
         align-horizontal: center;
     }
-    .button-bar Button {
+    .action-link {
         margin: 0 2;
+        padding: 0 2;
+        text-style: bold;
+    }
+    #btn-save {
+        color: $success;
+    }
+    #btn-scan-drives {
+        color: $warning;
     }
     """
 
@@ -66,14 +77,13 @@ class ConfigEditorScreen(Screen):
     def compose(self) -> ComposeResult:
         c = self._config
         wc = c.wslconfig
-        yield Header()
         with VerticalScroll():
             with Vertical(classes="editor-section"):
                 yield Static("WSL Settings", classes="section-header")
                 yield _field("Distro Name:", c.distroName, "input-distro-name")
                 yield _field("Import Name:", c.distroImportName, "input-import-name")
                 yield _field("Drive Letter:", c.wslDriveLetter, "input-drive-letter")
-                yield Button("Scan Drives", id="btn-scan-drives", variant="default")
+                yield Static(">> Scan Drives <<", id="btn-scan-drives", classes="action-link")
                 yield _field("Install Path:", c.wslInstallPath, "input-install-path")
 
             with Vertical(classes="editor-section"):
@@ -87,24 +97,30 @@ class ConfigEditorScreen(Screen):
                 yield Static("IDE Selection (Snaps)", classes="section-header")
                 selected = {s.name for s in c.snaps}
                 for snap_id, snap_label in self.AVAILABLE_SNAPS:
-                    yield Checkbox(snap_label, value=snap_id in selected, id=f"snap-{snap_id}")
+                    yield AsciiCheckbox(snap_label, value=snap_id in selected, id=f"snap-{snap_id}")
 
             with Vertical(classes="editor-section"):
                 yield Static("Apt Packages", classes="section-header")
                 yield _field("Packages:", ", ".join(c.aptPackages), "input-apt-packages")
 
             with Horizontal(classes="button-bar"):
-                yield Button("Save & Back", id="btn-save", variant="primary")
-                yield Button("Cancel", id="btn-cancel", variant="default")
-        yield Footer()
+                yield Static(">> Save & Back <<", id="btn-save", classes="action-link")
+                yield Static(">> Cancel <<", id="btn-cancel", classes="action-link")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-save":
+    def action_cancel(self) -> None:
+        self.app.pop_screen()
+
+    def on_click(self, event) -> None:
+        widget = event.widget
+        widget_id = getattr(widget, "id", None)
+        if not widget_id:
+            return
+        if widget_id == "btn-save":
             self._save_config()
             self.app.pop_screen()
-        elif event.button.id == "btn-cancel":
+        elif widget_id == "btn-cancel":
             self.app.pop_screen()
-        elif event.button.id == "btn-scan-drives":
+        elif widget_id == "btn-scan-drives":
             from .drive_picker import DrivePickerModal
             current = self.query_one("#input-drive-letter", Input).value
             self.app.push_screen(DrivePickerModal(current), self._on_drive_selected)
@@ -136,7 +152,7 @@ class ConfigEditorScreen(Screen):
         # Snaps
         snaps = []
         for snap_id, _ in self.AVAILABLE_SNAPS:
-            cb = self.query_one(f"#snap-{snap_id}", Checkbox)
+            cb = self.query_one(f"#snap-{snap_id}", AsciiCheckbox)
             if cb.value:
                 snaps.append(SnapPackage(snap_id, True))
         c.snaps = snaps

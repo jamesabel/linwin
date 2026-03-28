@@ -7,7 +7,7 @@ import os
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Static
+from textual.widgets import Static
 from textual import work
 
 from ...shared.config import SetupConfig
@@ -30,8 +30,11 @@ class VerifyScreen(Screen):
         padding: 1 2;
         align-horizontal: center;
     }
-    .button-bar Button {
+    .action-link {
         margin: 0 2;
+        padding: 0 2;
+        text-style: bold;
+        color: $text;
     }
     """
 
@@ -40,14 +43,12 @@ class VerifyScreen(Screen):
         self._config = config
 
     def compose(self) -> ComposeResult:
-        yield Header()
         with VerticalScroll():
             yield VerifyDashboard(title="Windows Checks", id="win-verify")
             yield VerifyDashboard(title="Linux Checks", id="linux-verify")
             yield Static("Running verification...", id="verify-status")
             with Horizontal(classes="button-bar"):
-                yield Button("Exit", id="btn-exit", variant="primary")
-        yield Footer()
+                yield Static(">> Exit <<", id="btn-exit", classes="action-link")
 
     def on_mount(self) -> None:
         self.run_verification()
@@ -157,6 +158,8 @@ class VerifyScreen(Screen):
         else:
             status.update(f"[red]{total_failed} check(s) failed. See details above.[/]")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-exit":
+    def on_click(self, event) -> None:
+        widget = event.widget
+        widget_id = getattr(widget, "id", None)
+        if widget_id == "btn-exit":
             self.app.exit()

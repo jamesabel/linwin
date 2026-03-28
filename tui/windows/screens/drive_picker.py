@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Label, RadioButton, RadioSet, Static
+from textual.widgets import Static
 from textual import work
 
+from ...shared.widgets import AsciiRadioSet
 from ..tasks.drive_scan import DriveScanResult, scan_drives
 
 
@@ -23,11 +24,11 @@ class DrivePickerModal(ModalScreen[str | None]):
         align: center middle;
     }
     #picker-dialog {
-        width: 70;
-        max-width: 90%;
+        width: 90;
+        max-width: 95%;
         height: auto;
         max-height: 80%;
-        border: solid $primary;
+        border: ascii $primary;
         background: $surface;
         padding: 1 2;
     }
@@ -91,10 +92,8 @@ class DrivePickerModal(ModalScreen[str | None]):
 
         status.update("Select a drive (ranked by performance and free space):")
 
-        # Build radio buttons
-        radio_set = RadioSet(id="drive-radio-set")
-        await dialog.mount(radio_set)
-
+        # Build radio options
+        labels = []
         for i, drive in enumerate(result.candidates):
             recommended = " (recommended)" if i == 0 else ""
             current = " (current)" if drive.letter.upper() == self._current_letter else ""
@@ -105,8 +104,10 @@ class DrivePickerModal(ModalScreen[str | None]):
             if drive.label:
                 label += f' "{drive.label}"'
             label += f"{recommended}{current}"
-            rb = RadioButton(label, value=(i == 0))
-            await radio_set.mount(rb)
+            labels.append(label)
+
+        radio_set = AsciiRadioSet(labels, default=0, id="drive-radio-set")
+        await dialog.mount(radio_set)
 
         if result.excluded:
             lines = ["Excluded:"]
@@ -128,7 +129,7 @@ class DrivePickerModal(ModalScreen[str | None]):
         if not self._scan_result or not self._scan_result.candidates:
             return
         try:
-            radio_set = self.query_one("#drive-radio-set", RadioSet)
+            radio_set = self.query_one("#drive-radio-set", AsciiRadioSet)
             idx = radio_set.pressed_index
             if idx >= 0:
                 self.dismiss(self._scan_result.candidates[idx].letter)

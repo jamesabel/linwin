@@ -1,12 +1,108 @@
-"""Shared TUI widgets: TaskListWidget, LogPanel, VerifyDashboard."""
+"""Shared TUI widgets: TaskListWidget, LogPanel, VerifyDashboard, AsciiCheckbox, AsciiRadioSet."""
 
 from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
+from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import DataTable, Label, RichLog, Static
+
+
+class AsciiCheckbox(Widget):
+    """A checkbox using plain ASCII: [X] checked, [ ] unchecked."""
+
+    DEFAULT_CSS = """
+    AsciiCheckbox {
+        height: 1;
+        width: 1fr;
+    }
+    AsciiCheckbox .checkbox-label {
+        width: 1fr;
+    }
+    """
+
+    value: reactive[bool] = reactive(False)
+
+    class Changed(Message):
+        """Posted when the checkbox value changes."""
+        def __init__(self, checkbox: "AsciiCheckbox", value: bool) -> None:
+            super().__init__()
+            self.checkbox = checkbox
+            self.value = value
+
+    def __init__(self, label: str, value: bool = False, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._label = label
+        self.value = value
+
+    def _render_text(self) -> str:
+        mark = "X" if self.value else " "
+        return f"\\[{mark}] {self._label}"
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._render_text(), classes="checkbox-label")
+
+    def watch_value(self, new_value: bool) -> None:
+        try:
+            self.query_one(".checkbox-label", Static).update(self._render_text())
+        except Exception:
+            pass
+
+    def on_click(self) -> None:
+        self.value = not self.value
+        self.post_message(self.Changed(self, self.value))
+
+
+class AsciiRadioSet(Widget):
+    """A radio set using plain ASCII: (*) selected, ( ) unselected."""
+
+    DEFAULT_CSS = """
+    AsciiRadioSet {
+        height: auto;
+        width: 1fr;
+    }
+    AsciiRadioSet .radio-option {
+        height: 1;
+        width: 1fr;
+    }
+    """
+
+    pressed_index: reactive[int] = reactive(0)
+
+    class Changed(Message):
+        """Posted when the selection changes."""
+        def __init__(self, radio_set: "AsciiRadioSet", index: int) -> None:
+            super().__init__()
+            self.radio_set = radio_set
+            self.index = index
+
+    def __init__(self, labels: list[str], default: int = 0, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._labels = labels
+        self.pressed_index = default
+
+    def compose(self) -> ComposeResult:
+        for i, label in enumerate(self._labels):
+            mark = "*" if i == self.pressed_index else " "
+            yield Static(f"({mark}) {label}", classes="radio-option", id=f"radio-{i}")
+
+    def watch_pressed_index(self, new_index: int) -> None:
+        try:
+            for i, label in enumerate(self._labels):
+                mark = "*" if i == new_index else " "
+                self.query_one(f"#radio-{i}", Static).update(f"({mark}) {label}")
+        except Exception:
+            pass
+
+    def on_click(self, event) -> None:
+        widget = event.widget
+        widget_id = getattr(widget, "id", None)
+        if widget_id and widget_id.startswith("radio-"):
+            idx = int(widget_id.split("-", 1)[1])
+            self.pressed_index = idx
+            self.post_message(self.Changed(self, idx))
 
 
 
@@ -65,7 +161,7 @@ class TaskListWidget(Widget):
     TaskListWidget {
         height: auto;
         max-height: 50%;
-        border: solid $primary;
+        border: ascii $primary;
         padding: 1 1;
     }
     """
@@ -98,7 +194,7 @@ class LogPanel(Widget):
 
     DEFAULT_CSS = """
     LogPanel {
-        border: solid $secondary;
+        border: ascii $secondary;
         height: 1fr;
         min-height: 8;
     }
@@ -142,7 +238,7 @@ class VerifyDashboard(Widget):
     DEFAULT_CSS = """
     VerifyDashboard {
         height: auto;
-        border: solid $primary;
+        border: ascii $primary;
         padding: 1 1;
     }
     VerifyDashboard DataTable {

@@ -5,7 +5,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Static
+from textual.widgets import Static
 from textual import work
 
 from ...shared.config import SetupConfig
@@ -42,8 +42,16 @@ class SetupScreen(Screen):
         padding: 1 2;
         align-horizontal: center;
     }
-    .button-bar Button {
+    .action-link {
         margin: 0 2;
+        padding: 0 2;
+        text-style: bold;
+    }
+    .hidden {
+        display: none;
+    }
+    #btn-verify {
+        color: $success;
     }
     """
 
@@ -53,14 +61,12 @@ class SetupScreen(Screen):
 
     def compose(self) -> ComposeResult:
         task_list = build_task_list(self._config)
-        yield Header()
         with VerticalScroll():
             yield TaskListWidget(task_list, id="setup-tasks")
             yield LogPanel(id="setup-log")
             yield Static("", id="setup-status")
             with Horizontal(classes="button-bar"):
-                yield Button("Run Verification", id="btn-verify", variant="primary", disabled=True)
-        yield Footer()
+                yield Static(">> Run Verification <<", id="btn-verify", classes="action-link hidden")
 
     def on_mount(self) -> None:
         self.run_setup()
@@ -168,9 +174,11 @@ class SetupScreen(Screen):
         # Summary
         log.write_success("\nSetup complete!")
         status.update("[green]Setup complete! Run verification to confirm.[/]")
-        self.query_one("#btn-verify", Button).disabled = False
+        self.query_one("#btn-verify").remove_class("hidden")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-verify":
+    def on_click(self, event) -> None:
+        widget = event.widget
+        widget_id = getattr(widget, "id", None)
+        if widget_id == "btn-verify":
             from .verify import VerifyScreen
             self.app.switch_screen(VerifyScreen(self._config))
