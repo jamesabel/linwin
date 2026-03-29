@@ -1,0 +1,6 @@
+.idea/
+*.tar
+*.vhdx
+__pycache__/
+*.pyc
+.claude/settings.local.json
