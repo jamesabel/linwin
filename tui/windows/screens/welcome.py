@@ -119,6 +119,12 @@ class WelcomeScreen(Screen):
     #btn-start {
         color: $success;
     }
+    #btn-launch-files {
+        color: $accent;
+    }
+    #btn-launch-terminal {
+        color: $accent;
+    }
     #detecting-label {
         margin: 1 3;
         color: $warning;
@@ -157,6 +163,8 @@ class WelcomeScreen(Screen):
             with Vertical(classes="button-bar"):
                 yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
                 yield Static(">> Start Setup <<", id="btn-start", classes="action-link")
+                yield Static(">> Launch File Manager <<", id="btn-launch-files", classes="action-link")
+                yield Static(">> Open Ubuntu Terminal <<", id="btn-launch-terminal", classes="action-link")
                 yield Static(">> Quit (Escape) <<", id="btn-quit", classes="action-link")
 
     def on_mount(self) -> None:
@@ -212,6 +220,8 @@ class WelcomeScreen(Screen):
 
     def on_click(self, event) -> None:
         """Handle clicks on action links and detail links."""
+        from ...shared.launcher import launch_windows_terminal, launch_wsl_app
+
         widget = event.widget
         widget_id = getattr(widget, "id", None)
         if not widget_id:
@@ -222,6 +232,14 @@ class WelcomeScreen(Screen):
         elif widget_id == "btn-start":
             from .setup import SetupScreen
             self.app.push_screen(SetupScreen(self._config))
+        elif widget_id == "btn-launch-files":
+            try:
+                launch_wsl_app(self._config.distroImportName, "nautilus")
+                self.app.notify("Launched: nautilus")
+            except Exception as e:
+                self.app.notify(f"Failed to launch: {e}", severity="error")
+        elif widget_id == "btn-launch-terminal":
+            launch_windows_terminal()
         elif widget_id == "btn-quit":
             self.app.exit()
         elif widget_id in self._fail_details:

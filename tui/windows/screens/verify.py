@@ -36,6 +36,12 @@ class VerifyScreen(Screen):
         text-style: bold;
         color: $text;
     }
+    #btn-launch-files {
+        color: $accent;
+    }
+    #btn-launch-terminal {
+        color: $accent;
+    }
     """
 
     def __init__(self, config: SetupConfig, **kwargs) -> None:
@@ -48,6 +54,8 @@ class VerifyScreen(Screen):
             yield VerifyDashboard(title="Linux Checks", id="linux-verify")
             yield Static("Running verification...", id="verify-status")
             with Horizontal(classes="button-bar"):
+                yield Static(">> Launch File Manager <<", id="btn-launch-files", classes="action-link")
+                yield Static(">> Open Ubuntu Terminal <<", id="btn-launch-terminal", classes="action-link")
                 yield Static(">> Exit <<", id="btn-exit", classes="action-link")
 
     def on_mount(self) -> None:
@@ -161,7 +169,17 @@ class VerifyScreen(Screen):
             status.update(f"[red]{total_failed} check(s) failed. See details above.[/]")
 
     def on_click(self, event) -> None:
+        from ...shared.launcher import launch_windows_terminal, launch_wsl_app
+
         widget = event.widget
         widget_id = getattr(widget, "id", None)
-        if widget_id == "btn-exit":
+        if widget_id == "btn-launch-files":
+            try:
+                launch_wsl_app(self._config.distroImportName, "nautilus")
+                self.app.notify("Launched: nautilus")
+            except Exception as e:
+                self.app.notify(f"Failed to launch: {e}", severity="error")
+        elif widget_id == "btn-launch-terminal":
+            launch_windows_terminal()
+        elif widget_id == "btn-exit":
             self.app.exit()
