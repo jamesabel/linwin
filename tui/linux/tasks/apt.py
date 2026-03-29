@@ -2,16 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from ...shared.subprocess_runner import LineCallback, run_local
-
-
-@dataclass
-class TaskResult:
-    ok: bool
-    message: str
-    skipped: bool = False
+from ...shared.task_result import TaskResult
 
 
 async def apt_update(on_line: LineCallback | None = None) -> TaskResult:

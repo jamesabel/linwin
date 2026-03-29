@@ -2,31 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from ...shared.subprocess_runner import LineCallback, run_powershell
+from ...shared.task_result import TaskResult
 
 
-@dataclass
-class ValidationResult:
-    ok: bool
-    message: str
-    detail: str = ""
-
-
-async def check_windows_build(on_line: LineCallback | None = None) -> ValidationResult:
+async def check_windows_build(on_line: LineCallback | None = None) -> TaskResult:
     """Check that Windows build is >= 19044."""
     result = await run_powershell(
         "[System.Environment]::OSVersion.Version.Build",
         on_line=on_line,
     )
     if not result.success:
-        return ValidationResult(False, "Could not determine Windows build")
+        return TaskResult(False, "Could not determine Windows build")
     build_str = result.output.strip()
     try:
         build = int(build_str)
     except ValueError:
-        return ValidationResult(False, f"Unexpected build output: {build_str}")
+        return TaskResult(False, f"Unexpected build output: {build_str}")
     if build < 19044:
         detail = (
             f"Your Windows build is {build}, but WSL2 requires build 19044 or later.\n"
@@ -38,11 +30,11 @@ async def check_windows_build(on_line: LineCallback | None = None) -> Validation
             "\n"
             "WSL2 requires Windows 10 version 21H2+ or Windows 11."
         )
-        return ValidationResult(False, f"Windows build {build} < 19044", detail)
-    return ValidationResult(True, f"Windows build {build}", "OK")
+        return TaskResult(False, f"Windows build {build} < 19044", detail)
+    return TaskResult(True, f"Windows build {build}", "OK")
 
 
-async def check_virtualization(on_line: LineCallback | None = None) -> ValidationResult:
+async def check_virtualization(on_line: LineCallback | None = None) -> TaskResult:
     """Check hardware virtualization and related features, with detailed diagnostics on failure."""
     # Gather all virtualization-related info in one PowerShell call
     diag_script = """
@@ -64,7 +56,7 @@ Write-Output "HYPERV=$hvState"
 """.strip()
     result = await run_powershell(diag_script, on_line=on_line)
     if not result.success:
-        return ValidationResult(False, "Could not check virtualization")
+        return TaskResult(False, "Could not check virtualization")
 
     # Parse diagnostic output
     info: dict[str, str] = {}
@@ -90,7 +82,7 @@ Write-Output "HYPERV=$hvState"
     )
 
     if fw_enabled or hypervisor_present:
-        return ValidationResult(True, "Virtualization enabled")
+        return TaskResult(True, "Virtualization enabled")
 
     # Build detailed failure report
     lines = [
@@ -111,17 +103,17 @@ Write-Output "HYPERV=$hvState"
         "  5. Re-run this setup after Windows boots",
     ]
     detail = "\n".join(lines)
-    return ValidationResult(False, "Virtualization not enabled in BIOS/UEFI", detail)
+    return TaskResult(False, "Virtualization not enabled in BIOS/UEFI", detail)
 
 
-async def check_drive_exists(drive_letter: str, on_line: LineCallback | None = None) -> ValidationResult:
+async def check_drive_exists(drive_letter: str, on_line: LineCallback | None = None) -> TaskResult:
     """Check that the target drive exists."""
     result = await run_powershell(
         f"Test-Path '{drive_letter}:\\'",
         on_line=on_line,
     )
     if not result.success:
-        return ValidationResult(False, f"Could not check drive {drive_letter}:")
+        return TaskResult(False, f"Could not check drive {drive_letter}:")
     output = result.output.strip().lower()
     if output == "true":
         # Get free space
@@ -129,7 +121,7 @@ async def check_drive_exists(drive_letter: str, on_line: LineCallback | None = N
             f"[math]::Round((Get-PSDrive {drive_letter}).Free / 1GB, 1)",
         )
         free_gb = space_result.output.strip() if space_result.success else "?"
-        return ValidationResult(True, f"Drive {drive_letter}: found", f"{free_gb} GB free")
+        return TaskResult(True, f"Drive {drive_letter}: found", f"{free_gb} GB free")
     # Try to suggest a better drive
     from .drive_scan import scan_drives
     scan = await scan_drives()
@@ -149,28 +141,28 @@ async def check_drive_exists(drive_letter: str, on_line: LineCallback | None = N
         f"  1. Connect the drive that should be mounted as {drive_letter}:\n"
         "  2. Or use Configure Settings > Scan Drives to pick a drive\n"
     )
-    return ValidationResult(False, f"Drive {drive_letter}: not found", detail)
+    return TaskResult(False, f"Drive {drive_letter}: not found", detail)
 
 
-async def check_ram(on_line: LineCallback | None = None) -> ValidationResult:
+async def check_ram(on_line: LineCallback | None = None) -> TaskResult:
     """Detect total system RAM."""
     result = await run_powershell(
         "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)",
         on_line=on_line,
     )
     if not result.success:
-        return ValidationResult(True, "RAM: unknown")
+        return TaskResult(True, "RAM: unknown")
     gb = result.output.strip()
-    return ValidationResult(True, f"{gb} GB RAM")
+    return TaskResult(True, f"{gb} GB RAM")
 
 
-async def check_cpu_count(on_line: LineCallback | None = None) -> ValidationResult:
+async def check_cpu_count(on_line: LineCallback | None = None) -> TaskResult:
     """Detect CPU core count."""
     result = await run_powershell(
         "(Get-CimInstance Win32_Processor).NumberOfLogicalProcessors",
         on_line=on_line,
     )
     if not result.success:
-        return ValidationResult(True, "CPUs: unknown")
+        return TaskResult(True, "CPUs: unknown")
     count = result.output.strip()
-    return ValidationResult(True, f"{count} logical processors")
+    return TaskResult(True, f"{count} logical processors")

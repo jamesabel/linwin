@@ -4,17 +4,10 @@ from __future__ import annotations
 
 import os
 import tempfile
-from dataclasses import dataclass
 
 from ...shared.config import SetupConfig
 from ...shared.subprocess_runner import LineCallback, SubprocessResult, run_wsl, run_wsl_exec
-
-
-@dataclass
-class TaskResult:
-    ok: bool
-    message: str
-    skipped: bool = False
+from ...shared.task_result import TaskResult
 
 
 async def update_wsl(on_line: LineCallback | None = None) -> TaskResult:

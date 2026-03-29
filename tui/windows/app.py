@@ -2,41 +2,17 @@
 
 from __future__ import annotations
 
-from textual.app import App
-
-from ..shared.config import SetupConfig, load_config
+from ..shared.base_app import BaseSetupApp
 from ..shared.setup_logging import get_logger
-from ..shared.theme import SHARED_CSS
 from .screens.setup import SetupScreen
 from .screens.welcome import WelcomeScreen
 from .tasks.state import load_state
 
 
-class WindowsSetupApp(App):
+class WindowsSetupApp(BaseSetupApp):
     """Textual TUI for WSL2 + Ubuntu + WSLg setup on Windows."""
 
     TITLE = "WSL2 Ubuntu Setup"
-    CSS = SHARED_CSS
-
-    BINDINGS = [
-        ("ctrl+q", "quit", "Quit (Ctrl+Q)"),
-        ("escape", "quit", "Quit (Escape)"),
-        ("ctrl+c", "copy_log", "Copy Log (Ctrl+C)"),
-    ]
-
-    def action_copy_log(self) -> None:
-        """Copy the visible log panel content to the system clipboard."""
-        from ..shared.widgets import LogPanel
-        try:
-            panel = self.screen.query_one(LogPanel)
-            self.copy_to_clipboard(panel.get_text())
-            self.notify("Log copied to clipboard")
-        except Exception:
-            pass
-
-    def __init__(self, config: SetupConfig, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._config = config
 
     def on_mount(self) -> None:
         log = get_logger()

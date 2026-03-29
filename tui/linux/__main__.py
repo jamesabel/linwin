@@ -85,36 +85,21 @@ def run_cmd(cmd: str) -> tuple[int, str]:
 
 
 def headless_enable_systemd(config: dict) -> int:
-    """Enable systemd in wsl.conf."""
-    headless_task("enable_systemd", "running")
-    headless_log("Checking if systemd is already enabled...")
+    """Enable systemd in wsl.conf. Delegates to the async implementation in tasks.systemd."""
+    from .tasks.systemd import enable_systemd
 
-    rc, out = run_cmd("grep -q 'systemd=true' /etc/wsl.conf 2>/dev/null && echo yes || echo no")
-    if out.strip() == "yes":
+    headless_task("enable_systemd", "running")
+    result = asyncio.run(enable_systemd())
+
+    if result.skipped:
         headless_task("enable_systemd", "done")
         headless_log("systemd already enabled in wsl.conf.")
-        return 0
-
-    # Check if [boot] section exists
-    rc, out = run_cmd("grep -q '\\[boot\\]' /etc/wsl.conf 2>/dev/null && echo yes || echo no")
-    has_boot = out.strip() == "yes"
-
-    if has_boot:
-        cmd = "sudo sed -i '/\\[boot\\]/a systemd=true' /etc/wsl.conf"
-    else:
-        cmd = (
-            "echo '' | sudo tee -a /etc/wsl.conf > /dev/null && "
-            "echo '[boot]' | sudo tee -a /etc/wsl.conf > /dev/null && "
-            "echo 'systemd=true' | sudo tee -a /etc/wsl.conf > /dev/null"
-        )
-
-    rc, out = run_cmd(cmd)
-    if rc == 0:
+    elif result.ok:
         headless_task("enable_systemd", "done")
         headless_log("systemd enabled. WSL restart required.")
     else:
         headless_task("enable_systemd", "failed")
-        headless_error(f"Failed to enable systemd: {out}")
+        headless_error(f"Failed to enable systemd: {result.message}")
         return 1
     return 0
 

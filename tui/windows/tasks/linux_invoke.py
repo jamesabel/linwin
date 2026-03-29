@@ -10,24 +10,6 @@ from ...shared.subprocess_runner import LineCallback, SubprocessResult, run_wsl
 TaskUpdateCallback = Callable[[str, str], Awaitable[None]]
 
 
-async def ensure_pip_textual(config: SetupConfig, on_line: LineCallback | None = None) -> bool:
-    """Ensure textual is available in WSL (for standalone mode). Not needed for headless."""
-    result = await run_wsl(
-        config.distroImportName,
-        "python3 -c 'import textual' 2>/dev/null && echo ok || echo missing",
-        on_line=on_line,
-    )
-    if "ok" in result.output:
-        return True
-    # Try installing
-    result = await run_wsl(
-        config.distroImportName,
-        "pip3 install --user textual 2>&1",
-        on_line=on_line,
-    )
-    return result.success
-
-
 async def run_linux_headless(
     config: SetupConfig,
     step: str,
