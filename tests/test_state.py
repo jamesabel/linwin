@@ -18,12 +18,11 @@ def state_dir(tmp_path):
 
 class TestSaveAndLoadState:
     def test_round_trip(self, state_dir):
-        state = SetupState(phase1_complete=True, needs_reboot=True, config_path="V:\\WSL")
+        state = SetupState(resume_from_task="update_wsl", config_path="V:\\WSL")
         save_state(state)
         loaded = load_state()
         assert loaded is not None
-        assert loaded.phase1_complete is True
-        assert loaded.needs_reboot is True
+        assert loaded.resume_from_task == "update_wsl"
         assert loaded.config_path == "V:\\WSL"
         assert loaded.timestamp != ""
 
@@ -31,7 +30,7 @@ class TestSaveAndLoadState:
         assert load_state() is None
 
     def test_clear_state(self, state_dir):
-        save_state(SetupState(phase1_complete=True))
+        save_state(SetupState(resume_from_task="update_wsl"))
         clear_state()
         assert load_state() is None
 
@@ -47,17 +46,29 @@ class TestSaveAndLoadState:
     def test_save_creates_directory(self, tmp_path):
         nested = tmp_path / "sub" / "dir"
         with patch("tui.windows.tasks.state._state_dir", return_value=nested):
-            save_state(SetupState(phase2_complete=True))
+            save_state(SetupState(resume_from_task="linux_packages"))
             loaded = load_state()
             assert loaded is not None
-            assert loaded.phase2_complete is True
+            assert loaded.resume_from_task == "linux_packages"
+
+    def test_migrates_old_format(self, state_dir):
+        """Old phase-based state should migrate to resume_from_task."""
+        state_file = state_dir / "setup_state.json"
+        state_file.write_text(json.dumps({
+            "phase1_complete": True,
+            "needs_reboot": True,
+            "config_path": "V:\\WSL",
+            "timestamp": "2025-01-01T00:00:00",
+        }))
+        loaded = load_state()
+        assert loaded is not None
+        assert loaded.resume_from_task == "update_wsl"
+        assert loaded.config_path == "V:\\WSL"
 
 
 class TestSetupStateDefaults:
     def test_defaults(self):
         state = SetupState()
-        assert state.phase1_complete is False
-        assert state.needs_reboot is False
-        assert state.phase2_complete is False
+        assert state.resume_from_task == ""
         assert state.config_path == ""
         assert state.timestamp == ""

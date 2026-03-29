@@ -31,8 +31,8 @@ class TestLinuxMain:
         from tui.linux.__main__ import main
         assert callable(main)
 
-    def test_headless_requires_phase(self):
-        """--headless without --phase should exit with error."""
+    def test_headless_requires_step(self):
+        """--headless without --step should exit with error."""
         result = subprocess.run(
             [sys.executable, "-m", "tui.linux", "--headless"],
             capture_output=True,
@@ -44,7 +44,7 @@ class TestLinuxMain:
     def test_missing_config_exits(self, tmp_path):
         """Running from a directory without config.json should exit with error."""
         result = subprocess.run(
-            [sys.executable, "-m", "tui.linux", "--headless", "--phase", "1"],
+            [sys.executable, "-m", "tui.linux", "--headless", "--step", "enable-systemd"],
             capture_output=True,
             text=True,
             cwd=str(tmp_path),

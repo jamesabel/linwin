@@ -30,13 +30,13 @@ async def ensure_pip_textual(config: SetupConfig, on_line: LineCallback | None =
 
 async def run_linux_headless(
     config: SetupConfig,
-    phase: int,
+    step: str,
     script_dir_win: str,
     on_line: Optional[LineCallback] = None,
     on_task_update: Optional[TaskUpdateCallback] = None,
 ) -> SubprocessResult:
     """
-    Invoke python3 -m tui.linux --headless --phase N inside WSL.
+    Invoke python3 -m tui.linux --headless --step <step> inside WSL.
 
     The headless script outputs structured lines:
         TASK:task_id:status
@@ -44,7 +44,7 @@ async def run_linux_headless(
         ERROR:message
     """
     wsl_path = windows_to_wsl_path(script_dir_win)
-    cmd = f"python3 -m tui.linux --headless --phase {phase}"
+    cmd = f"python3 -m tui.linux --headless --step {step}"
 
     async def parse_line(line: str, stream: str) -> None:
         if line.startswith("TASK:"):

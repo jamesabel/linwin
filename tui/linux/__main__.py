@@ -2,9 +2,9 @@
 """Linux-side TUI entry point for WSL Ubuntu setup.
 
 Usage:
-    python3 -m tui.linux                    # Interactive TUI
-    python3 -m tui.linux --headless --phase 1  # Headless: enable systemd
-    python3 -m tui.linux --headless --phase 2  # Headless: install packages
+    python3 -m tui.linux                                       # Interactive TUI
+    python3 -m tui.linux --headless --step enable-systemd      # Headless: enable systemd
+    python3 -m tui.linux --headless --step install-packages    # Headless: install packages
 """
 
 import argparse
@@ -84,7 +84,7 @@ def run_cmd(cmd: str) -> tuple[int, str]:
     return proc.returncode, output
 
 
-def headless_phase1(config: dict) -> int:
+def headless_enable_systemd(config: dict) -> int:
     """Enable systemd in wsl.conf."""
     headless_task("enable_systemd", "running")
     headless_log("Checking if systemd is already enabled...")
@@ -119,7 +119,7 @@ def headless_phase1(config: dict) -> int:
     return 0
 
 
-def headless_phase2(config: dict) -> int:
+def headless_install_packages(config: dict) -> int:
     """Install apt packages, snaps, verify WSLg."""
     exit_code = 0
 
@@ -229,7 +229,8 @@ def headless_phase2(config: dict) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description="WSL Ubuntu Setup TUI (Linux)")
     parser.add_argument("--headless", action="store_true", help="Run without TUI (structured output)")
-    parser.add_argument("--phase", type=int, choices=[1, 2], help="Phase to run (headless mode)")
+    parser.add_argument("--step", choices=["enable-systemd", "install-packages"],
+                        help="Step to run (headless mode)")
     args = parser.parse_args()
 
     log = setup_logging()
@@ -237,14 +238,14 @@ def main() -> None:
     config_data = find_config()
 
     if args.headless:
-        log.info("Headless mode, phase %s", args.phase)
+        log.info("Headless mode, step=%s", args.step)
         try:
-            if args.phase == 1:
-                sys.exit(headless_phase1(config_data))
-            elif args.phase == 2:
-                sys.exit(headless_phase2(config_data))
+            if args.step == "enable-systemd":
+                sys.exit(headless_enable_systemd(config_data))
+            elif args.step == "install-packages":
+                sys.exit(headless_install_packages(config_data))
             else:
-                print("ERROR:--phase required with --headless", flush=True)
+                print("ERROR:--step required with --headless", flush=True)
                 sys.exit(1)
         except SystemExit:
             sys.stdout.flush()

@@ -38,9 +38,9 @@ SETUP_TASKS = [
     ("set_user", "Set default user"),
     ("write_config", "Write .wslconfig"),
     ("shutdown_wsl", "Shutdown WSL"),
-    ("linux_phase1", "Linux setup: enable systemd"),
+    ("linux_systemd", "Linux setup: enable systemd"),
     ("restart_wsl", "Restart WSL"),
-    ("linux_phase2", "Linux setup: install packages"),
+    ("linux_packages", "Linux setup: install packages"),
 ]
 
 RESUME_AFTER_REBOOT = "update_wsl"
@@ -329,15 +329,15 @@ class SetupScreen(Screen):
         async def on_task_update(task_id: str, task_status: str) -> None:
             log.write_info(f"  [{task_id}] {task_status}")
 
-        # Linux Phase 1 (enable systemd)
-        if start_index <= task_ids.index("linux_phase1"):
-            log.write_command("Running Linux setup phase 1 (enable systemd)...")
-            tasks.set_status("linux_phase1", "running")
-            lp1 = await run_linux_headless(config, 1, script_dir, on_line, on_task_update)
-            tasks.set_status("linux_phase1", "done" if lp1.success else "failed")
+        # Linux: enable systemd
+        if start_index <= task_ids.index("linux_systemd"):
+            log.write_command("Running Linux setup: enable systemd...")
+            tasks.set_status("linux_systemd", "running")
+            lp1 = await run_linux_headless(config, "enable-systemd", script_dir, on_line, on_task_update)
+            tasks.set_status("linux_systemd", "done" if lp1.success else "failed")
             if not lp1.success:
-                log.write_error("Linux phase 1 failed")
-                status.update("[red]Linux setup phase 1 failed.[/]")
+                log.write_error("Linux enable-systemd failed")
+                status.update("[red]Linux setup: enable systemd failed.[/]")
                 return
 
         # Restart WSL (for systemd)
@@ -353,29 +353,29 @@ class SetupScreen(Screen):
                 flog.warning("WSL readiness probe timed out, proceeding anyway")
                 log.write_info("WSL slow to respond, proceeding...")
 
-        # Linux Phase 2 (install packages, with retry)
-        if start_index <= task_ids.index("linux_phase2"):
-            log.write_command("Running Linux setup phase 2 (install packages)...")
-            tasks.set_status("linux_phase2", "running")
+        # Linux: install packages (with retry)
+        if start_index <= task_ids.index("linux_packages"):
+            log.write_command("Running Linux setup: install packages...")
+            tasks.set_status("linux_packages", "running")
             max_retries = 2
             lp2 = None
             for attempt in range(1, max_retries + 1):
-                lp2 = await run_linux_headless(config, 2, script_dir, on_line, on_task_update)
+                lp2 = await run_linux_headless(config, "install-packages", script_dir, on_line, on_task_update)
                 if lp2.success:
                     break
                 if attempt < max_retries:
-                    flog.warning("Linux phase 2 attempt %d failed, retrying...", attempt)
-                    log.write_info(f"Phase 2 attempt {attempt} failed, retrying...")
+                    flog.warning("Linux install-packages attempt %d failed, retrying...", attempt)
+                    log.write_info(f"Install packages attempt {attempt} failed, retrying...")
                     await asyncio.sleep(5)
-            tasks.set_status("linux_phase2", "done" if lp2.success else "failed")
+            tasks.set_status("linux_packages", "done" if lp2.success else "failed")
             if not lp2.success:
-                log.write_error("Linux phase 2 failed")
-                status.update("[yellow]Linux setup phase 2 had issues. Run verification to check.[/]")
+                log.write_error("Linux install-packages failed")
+                status.update("[yellow]Linux package installation had issues. Run verification to check.[/]")
             else:
                 log.write_success("All tasks complete!")
                 status.update("[green]Setup complete! Run verification to confirm.[/]")
 
-        flog.info("=== Setup finished (linux_phase2 success=%s) ===", lp2.success if lp2 else "N/A")
+        flog.info("=== Setup finished (install-packages success=%s) ===", lp2.success if lp2 else "N/A")
 
         # Clear reboot state
         clear_state()
