@@ -89,7 +89,7 @@ Write-Output "HYPERV=$hvState"
         else "look under Advanced > CPU Configuration or M.I.T. > SVM Mode"
     )
 
-    if fw_enabled:
+    if fw_enabled or hypervisor_present:
         return ValidationResult(True, "Virtualization enabled")
 
     # Build detailed failure report

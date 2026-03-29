@@ -70,21 +70,23 @@ class VerifyScreen(Screen):
         vm_on = await features.check_feature("VirtualMachinePlatform")
         win_dash.add_check("Virtual Machine Platform enabled", vm_on)
 
-        # WSL installed
+        # WSL installed (wsl --version returns exit=1 on some builds even when working)
         result = await run_powershell("wsl --version 2>&1 | Select-Object -First 1")
-        win_dash.add_check("WSL installed", result.success, result.output.strip())
+        wsl_version_str = result.output.strip()
+        win_dash.add_check("WSL installed", "version" in wsl_version_str.lower(), wsl_version_str)
 
         # Distro registered
         registered = await wsl_install.is_distro_registered(config)
         win_dash.add_check(f"Distro '{config.distroImportName}' registered", registered)
 
-        # Distro is WSL 2
+        # Distro is WSL 2 (wsl -l -v emits UTF-16 with nulls; strip them before matching)
         if registered:
             info = await run_powershell(
-                f"wsl -l -v 2>&1 | Select-String '{config.distroImportName}'"
+                f"(wsl -l -v 2>&1 | Out-String) -replace '\\0','' | Select-String '{config.distroImportName}'"
             )
-            is_v2 = "2" in info.output
-            win_dash.add_check("Distro is WSL version 2", is_v2, info.output.strip())
+            version_line = info.output.replace("\x00", "").strip()
+            is_v2 = "2" in version_line
+            win_dash.add_check("Distro is WSL version 2", is_v2, version_line)
 
         # Drive exists
         drive_result = await validators.check_drive_exists(config.wslDriveLetter)

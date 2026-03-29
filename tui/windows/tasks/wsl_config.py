@@ -22,15 +22,17 @@ def get_wslconfig_path() -> str:
 
 def generate_wslconfig_content(config: SetupConfig) -> str:
     wc = config.wslconfig
+    # .wslconfig uses INI format — backslashes in paths must be escaped
+    # or replaced with forward slashes to avoid invalid-escape errors.
+    swap_path = wc.swapFile.replace("\\", "/")
     return (
         f"[wsl2]\n"
         f"memory={wc.memory}\n"
         f"processors={wc.processors}\n"
         f"swap={wc.swap}\n"
-        f"swapFile={wc.swapFile}\n"
+        f"swapFile={swap_path}\n"
         f"guiApplications={str(wc.guiApplications).lower()}\n"
         f"defaultVhdSize={wc.defaultVhdSize}\n"
-        f"sparseVhd={str(wc.sparseVhd).lower()}\n"
     )
 
 

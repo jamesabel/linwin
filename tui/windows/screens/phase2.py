@@ -12,6 +12,7 @@ from textual.widgets import Static
 from textual import work
 
 from ...shared.config import SetupConfig, windows_to_wsl_path
+from ...shared.setup_logging import get_logger
 from ...shared.widgets import LogPanel, TaskListWidget
 from ..tasks import wsl_install
 from ..tasks.linux_invoke import run_linux_headless
@@ -78,6 +79,8 @@ class Phase2Screen(Screen):
 
     @work(exclusive=True)
     async def run_phase2(self) -> None:
+        flog = get_logger()
+        flog.info("=== Phase 2 started ===")
         tasks = self.query_one("#phase2-tasks", TaskListWidget)
         log = self.query_one("#phase2-log", LogPanel)
         status = self.query_one("#phase2-status", Static)
@@ -226,12 +229,28 @@ class Phase2Screen(Screen):
         # 11. Restart WSL (for systemd)
         log.write_command("Restarting WSL for systemd...")
         await run_task("restart_wsl", wsl_install.shutdown_wsl(on_line))
-        await asyncio.sleep(4)
 
-        # 12. Linux Phase 2
+        # Wait for WSL to be fully ready before running phase 2
+        log.write_info("Waiting for WSL to become ready...")
+        flog.info("Probing WSL readiness after restart...")
+        ready = await wsl_install.wait_for_wsl_ready(config, on_line)
+        if not ready:
+            flog.warning("WSL readiness probe timed out, proceeding anyway")
+            log.write_info("WSL slow to respond, proceeding...")
+
+        # 12. Linux Phase 2 (with retry on transient WSL disconnect)
         log.write_command("Running Linux setup phase 2 (install packages)...")
         tasks.set_status("linux_phase2", "running")
-        lp2 = await run_linux_headless(config, 2, script_dir, on_line, on_task_update)
+        max_retries = 2
+        lp2 = None
+        for attempt in range(1, max_retries + 1):
+            lp2 = await run_linux_headless(config, 2, script_dir, on_line, on_task_update)
+            if lp2.success:
+                break
+            if attempt < max_retries:
+                flog.warning("Linux phase 2 attempt %d failed, retrying...", attempt)
+                log.write_info(f"Phase 2 attempt {attempt} failed, retrying...")
+                await asyncio.sleep(5)
         tasks.set_status("linux_phase2", "done" if lp2.success else "failed")
         if not lp2.success:
             log.write_error("Linux phase 2 failed")
@@ -239,6 +258,8 @@ class Phase2Screen(Screen):
         else:
             log.write_success("All phases complete!")
             status.update("[green]Setup complete! Run verification to confirm.[/]")
+
+        flog.info("=== Phase 2 finished (linux_phase2 success=%s) ===", lp2.success)
 
         # Clear the reboot state file
         clear_state()

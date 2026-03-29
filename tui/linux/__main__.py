@@ -10,9 +10,12 @@ Usage:
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 from pathlib import Path
+
+from ..shared.setup_logging import setup_logging
 
 
 def find_config() -> dict:
@@ -28,26 +31,57 @@ def find_config() -> dict:
 
 # ---------- Headless mode (no textual import) ----------
 
+_log = logging.getLogger("wslsetup")
+
+
 def headless_task(task_id: str, status: str) -> None:
+    _log.info("TASK %-25s -> %s", task_id, status)
     print(f"TASK:{task_id}:{status}", flush=True)
 
 
 def headless_log(msg: str) -> None:
+    _log.info("LOG: %s", msg)
     print(f"LOG:{msg}", flush=True)
 
 
 def headless_error(msg: str) -> None:
+    _log.error("ERROR: %s", msg)
     print(f"ERROR:{msg}", flush=True)
 
 
 def run_cmd(cmd: str) -> tuple[int, str]:
-    """Run a shell command synchronously, return (exit_code, output)."""
+    """Run a shell command synchronously, streaming output to avoid buffering.
+
+    Uses Popen with line-by-line reading instead of subprocess.run with
+    capture_output to prevent memory buildup during large installs (snaps).
+    Only the last 50 lines are kept for the return value.
+    """
     import subprocess
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    output = result.stdout.strip()
-    if result.stderr.strip():
-        output += "\n" + result.stderr.strip()
-    return result.returncode, output
+    _log.info("RUN: %s", cmd)
+    tail: list[str] = []
+    max_tail = 50
+    try:
+        proc = subprocess.Popen(
+            cmd, shell=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True,
+        )
+        for line in proc.stdout:
+            line = line.rstrip("\n\r")
+            _log.debug("  | %s", line)
+            tail.append(line)
+            if len(tail) > max_tail:
+                tail.pop(0)
+        proc.wait()
+    except Exception as exc:
+        _log.error("run_cmd exception: %s", exc)
+        return 1, str(exc)
+    output = "\n".join(tail)
+    if proc.returncode == 0:
+        _log.info("OK  (exit=0): %s", cmd)
+    else:
+        _log.warning("FAIL (exit=%d): %s", proc.returncode, cmd)
+    return proc.returncode, output
 
 
 def headless_phase1(config: dict) -> int:
@@ -152,6 +186,29 @@ def headless_phase2(config: dict) -> int:
             flags = "--classic" if classic else ""
             headless_log(f"Installing snap: {name}...")
             rc, out = run_cmd(f"sudo snap install {flags} {name} 2>&1")
+            if rc != 0 and "change in progress" in out:
+                # A previous install may still be running in snapd.
+                # Wait for it to finish, then check if it succeeded.
+                headless_log(f"Snap change in progress for {name}, waiting...")
+                import time
+                for attempt in range(6):
+                    time.sleep(10)
+                    chk_rc, chk_out = run_cmd(f"snap list {name} 2>/dev/null && echo yes || echo no")
+                    if "yes" in chk_out:
+                        headless_log(f"{name} installed by background change.")
+                        rc = 0
+                        break
+                    headless_log(f"Still waiting for {name} (attempt {attempt + 1}/6)...")
+                else:
+                    # Last resort: abort stuck changes and retry
+                    headless_log(f"Aborting stuck snap changes for {name}...")
+                    run_cmd(
+                        f"snap changes 2>/dev/null | grep -i '{name}' | grep -v Done "
+                        "| awk '{{print $1}}' | while read cid; do sudo snap abort $cid 2>&1; done"
+                    )
+                    time.sleep(2)
+                    headless_log(f"Retrying snap install: {name}...")
+                    rc, out = run_cmd(f"sudo snap install {flags} {name} 2>&1")
             headless_task(tid, "done" if rc == 0 else "failed")
             if rc != 0:
                 headless_error(f"Failed to install {name}: {out}")
@@ -175,24 +232,39 @@ def main() -> None:
     parser.add_argument("--phase", type=int, choices=[1, 2], help="Phase to run (headless mode)")
     args = parser.parse_args()
 
+    log = setup_logging()
+
     config_data = find_config()
 
     if args.headless:
-        if args.phase == 1:
-            sys.exit(headless_phase1(config_data))
-        elif args.phase == 2:
-            sys.exit(headless_phase2(config_data))
-        else:
-            print("ERROR:--phase required with --headless", flush=True)
+        log.info("Headless mode, phase %s", args.phase)
+        try:
+            if args.phase == 1:
+                sys.exit(headless_phase1(config_data))
+            elif args.phase == 2:
+                sys.exit(headless_phase2(config_data))
+            else:
+                print("ERROR:--phase required with --headless", flush=True)
+                sys.exit(1)
+        except SystemExit:
+            sys.stdout.flush()
+            raise
+        except Exception:
+            import traceback
+            tb = traceback.format_exc()
+            headless_error(tb)
+            log.error("Unhandled exception in headless mode:\n%s", tb)
             sys.exit(1)
     else:
         # Interactive TUI mode
         from ..shared.config import SetupConfig
         from .app import LinuxSetupApp
 
+        log.info("Linux interactive TUI starting")
         config = SetupConfig.from_dict(config_data)
         app = LinuxSetupApp(config)
         app.run()
+        log.info("Linux TUI exited")
 
 
 if __name__ == "__main__":

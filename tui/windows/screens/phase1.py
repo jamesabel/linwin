@@ -11,6 +11,7 @@ from textual.widgets import Static
 from textual import work
 
 from ...shared.config import SetupConfig
+from ...shared.setup_logging import get_logger
 from ...shared.widgets import LogPanel, TaskListWidget
 from ..tasks import features, validators
 from ..tasks.state import SetupState, save_state
@@ -76,6 +77,8 @@ class Phase1Screen(Screen):
 
     @work(exclusive=True)
     async def run_phase1(self) -> None:
+        flog = get_logger()
+        flog.info("=== Phase 1 started ===")
         tasks = self.query_one("#phase1-tasks", TaskListWidget)
         log = self.query_one("#phase1-log", LogPanel)
         status = self.query_one("#phase1-status", Static)
@@ -162,6 +165,7 @@ class Phase1Screen(Screen):
             self._needs_reboot = True
 
         # Done — show appropriate buttons
+        flog.info("=== Phase 1 complete (needs_reboot=%s) ===", self._needs_reboot)
         if self._needs_reboot:
             log.write_success("Features enabled. A reboot is required.")
             status.update("[yellow]Reboot required. After reboot, re-run this TUI to continue at Phase 2.[/]")

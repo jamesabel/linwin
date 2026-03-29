@@ -5,6 +5,7 @@ from __future__ import annotations
 from textual.app import App
 
 from ..shared.config import SetupConfig, load_config
+from ..shared.setup_logging import get_logger
 from ..shared.theme import SHARED_CSS
 from .screens.phase2 import Phase2Screen
 from .screens.welcome import WelcomeScreen
@@ -20,19 +21,33 @@ class WindowsSetupApp(App):
     BINDINGS = [
         ("ctrl+q", "quit", "Quit (Ctrl+Q)"),
         ("escape", "quit", "Quit (Escape)"),
+        ("ctrl+c", "copy_log", "Copy Log (Ctrl+C)"),
     ]
+
+    def action_copy_log(self) -> None:
+        """Copy the visible log panel content to the system clipboard."""
+        from ..shared.widgets import LogPanel
+        try:
+            panel = self.screen.query_one(LogPanel)
+            self.copy_to_clipboard(panel.get_text())
+            self.notify("Log copied to clipboard")
+        except Exception:
+            pass
 
     def __init__(self, config: SetupConfig, **kwargs) -> None:
         super().__init__(**kwargs)
         self._config = config
 
     def on_mount(self) -> None:
+        log = get_logger()
         # Check for saved state from a pre-reboot Phase 1
         state = load_state()
         if state and state.phase1_complete and state.needs_reboot:
             # Post-reboot: go straight to Phase 2
+            log.info("Resuming after reboot -> Phase 2 (state timestamp=%s)", state.timestamp)
             self.push_screen(Phase2Screen(self._config))
         else:
+            log.info("Starting fresh -> Welcome screen")
             self.push_screen(WelcomeScreen(self._config))
 
 

@@ -131,7 +131,7 @@ async def detect_default_user(config: SetupConfig, on_line: LineCallback | None 
     """Detect the non-root user from /home/ inside the distro."""
     result = await run_wsl(config.distroImportName, "ls /home/ 2>/dev/null", on_line=on_line)
     if result.success and result.stdout_lines:
-        users = [u.strip() for u in result.stdout_lines if u.strip()]
+        users = [u.strip() for u in result.stdout_lines if u.strip() and u.strip() != "root"]
         return users[0] if users else None
     return None
 
@@ -162,3 +162,21 @@ async def shutdown_wsl(on_line: LineCallback | None = None) -> TaskResult:
     """Shut down all WSL instances."""
     result = await run_wsl_exec(["--shutdown"], on_line=on_line)
     return TaskResult(True, "WSL shut down")
+
+
+async def wait_for_wsl_ready(
+    config: SetupConfig, on_line: LineCallback | None = None, max_attempts: int = 10
+) -> bool:
+    """Wait until the WSL distro is responsive after a restart.
+
+    Probes with a simple 'echo ready' command every 2 seconds.
+    Returns True when WSL responds, False if all attempts exhausted.
+    """
+    import asyncio
+
+    for attempt in range(max_attempts):
+        result = await run_wsl(config.distroImportName, "echo ready", on_line=on_line)
+        if result.success and "ready" in result.output:
+            return True
+        await asyncio.sleep(2)
+    return False

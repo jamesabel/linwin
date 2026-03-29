@@ -18,7 +18,18 @@ class LinuxSetupApp(App):
     BINDINGS = [
         ("ctrl+q", "quit", "Quit (Ctrl+Q)"),
         ("escape", "quit", "Quit (Escape)"),
+        ("ctrl+c", "copy_log", "Copy Log (Ctrl+C)"),
     ]
+
+    def action_copy_log(self) -> None:
+        """Copy the visible log panel content to the system clipboard."""
+        from ..shared.widgets import LogPanel
+        try:
+            panel = self.screen.query_one(LogPanel)
+            self.copy_to_clipboard(panel.get_text())
+            self.notify("Log copied to clipboard")
+        except Exception:
+            pass
 
     def __init__(self, config: SetupConfig, **kwargs) -> None:
         super().__init__(**kwargs)

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Awaitable
+
+from .setup_logging import get_logger
 
 LineCallback = Callable[[str, str], Awaitable[None]]
 
@@ -32,6 +35,11 @@ async def run_command(
     timeout: Optional[float] = None,
 ) -> SubprocessResult:
     """Run a command asynchronously, streaming output line by line."""
+    log = get_logger()
+    cmd_str = " ".join(args)
+    log.info("RUN: %s", cmd_str)
+    t0 = time.monotonic()
+
     proc = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
@@ -75,14 +83,28 @@ async def run_command(
             )
     except asyncio.TimeoutError:
         proc.kill()
+        elapsed = time.monotonic() - t0
+        log.warning("TIMEOUT after %.1fs: %s", elapsed, cmd_str)
         return SubprocessResult(exit_code=-1, stdout_lines=stdout_lines, stderr_lines=["Timed out"])
 
     await proc.wait()
-    return SubprocessResult(
+    elapsed = time.monotonic() - t0
+    result = SubprocessResult(
         exit_code=proc.returncode or 0,
         stdout_lines=stdout_lines,
         stderr_lines=stderr_lines,
     )
+    if result.success:
+        log.info("OK  (exit=0, %.1fs): %s", elapsed, cmd_str)
+    else:
+        log.warning("FAIL (exit=%d, %.1fs): %s", result.exit_code, elapsed, cmd_str)
+    for line in result.stdout_lines:
+        if line.strip():
+            log.debug("  stdout: %s", line)
+    for line in result.stderr_lines:
+        if line.strip():
+            log.debug("  stderr: %s", line)
+    return result
 
 
 async def run_powershell(

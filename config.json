@@ -9,14 +9,25 @@
         "swap": "8GB",
         "swapFile": "V:\\WSL\\swap.vhdx",
         "guiApplications": true,
-        "defaultVhdSize": "200GB",
-        "sparseVhd": true
+        "defaultVhdSize": "200GB"
     },
     "snaps": [
-        { "name": "code", "classic": true },
-        { "name": "intellij-idea-community", "classic": true },
-        { "name": "pycharm-community", "classic": true }
+        {
+            "name": "code",
+            "classic": true
+        },
+        {
+            "name": "intellij-idea-community",
+            "classic": true
+        },
+        {
+            "name": "pycharm-community",
+            "classic": true
+        }
     ],
-    "aptPackages": ["nautilus", "x11-apps"],
+    "aptPackages": [
+        "nautilus",
+        "x11-apps"
+    ],
     "enableSystemd": true
 }

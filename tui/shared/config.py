@@ -16,7 +16,6 @@ class WslConfig:
     swapFile: str = "V:\\WSL\\swap.vhdx"
     guiApplications: bool = True
     defaultVhdSize: str = "200GB"
-    sparseVhd: bool = True
 
 
 @dataclass

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from rich.markup import escape as rich_escape
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import DataTable, Label, RichLog, Static
+
+from .setup_logging import get_logger
 
 
 class AsciiCheckbox(Widget):
@@ -143,6 +146,7 @@ class TaskRow(Widget):
         yield Label(self.STATUS_TEXT["pending"], classes="task-status")
 
     def watch_status(self, value: str) -> None:
+        get_logger().info("TASK %-25s -> %s", self.task_id, value)
         try:
             status_label = self.query_one(".task-status", Label)
             status_label.update(self.STATUS_TEXT.get(value, value))
@@ -203,32 +207,53 @@ class LogPanel(Widget):
     }
     """
 
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._plain_lines: list[str] = []
+
     def compose(self) -> ComposeResult:
-        yield RichLog(highlight=True, markup=True, auto_scroll=True, wrap=True)
+        yield RichLog(highlight=False, markup=True, auto_scroll=True, wrap=True)
 
     @property
     def log(self) -> RichLog:
         return self.query_one(RichLog)
 
+    def get_text(self) -> str:
+        """Return the full log content as plain text."""
+        return "\n".join(self._plain_lines)
+
     def write_command(self, cmd: str) -> None:
-        self.log.write(f"[bold cyan]> {cmd}[/]")
+        get_logger().info("CMD: %s", cmd)
+        self._plain_lines.append(f"> {cmd}")
+        self.log.write(f"[bold cyan]> {rich_escape(cmd)}[/]")
 
     def write_stdout(self, line: str) -> None:
-        self.log.write(line)
+        get_logger().debug("OUT: %s", line)
+        self._plain_lines.append(line)
+        self.log.write(rich_escape(line))
 
     def write_stderr(self, line: str) -> None:
-        self.log.write(f"[red]{line}[/]")
+        get_logger().warning("ERR: %s", line)
+        self._plain_lines.append(line)
+        self.log.write(f"[red]{rich_escape(line)}[/]")
 
     def write_info(self, msg: str) -> None:
-        self.log.write(f"[dim]{msg}[/]")
+        get_logger().info("INFO: %s", msg)
+        self._plain_lines.append(msg)
+        self.log.write(f"[dim]{rich_escape(msg)}[/]")
 
     def write_success(self, msg: str) -> None:
-        self.log.write(f"[green]{msg}[/]")
+        get_logger().info("OK: %s", msg)
+        self._plain_lines.append(msg)
+        self.log.write(f"[green]{rich_escape(msg)}[/]")
 
     def write_error(self, msg: str) -> None:
-        self.log.write(f"[bold red]{msg}[/]")
+        get_logger().error("FAIL: %s", msg)
+        self._plain_lines.append(f"ERROR: {msg}")
+        self.log.write(f"[bold red]{rich_escape(msg)}[/]")
 
     def clear(self) -> None:
+        self._plain_lines.clear()
         self.log.clear()
 
 
@@ -266,6 +291,8 @@ class VerifyDashboard(Widget):
         yield Static("", classes="verify-summary", id="verify-summary")
 
     def add_check(self, name: str, passed: bool, detail: str = "", warn: bool = False) -> None:
+        tag = "WARN" if warn else ("PASS" if passed else "FAIL")
+        get_logger().info("VERIFY %-6s %s  %s", tag, name, detail)
         table = self.query_one(DataTable)
         if warn:
             status = "[yellow]WARN[/]"
