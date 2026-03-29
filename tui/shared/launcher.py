@@ -17,13 +17,15 @@ WSL_APP_BUTTONS: dict[str, tuple[str, str]] = {
 def launch_wsl_app(distro: str, *args: str) -> None:
     """Launch a GUI app inside WSL (non-blocking, fire-and-forget).
 
+    Uses ``bash -lc`` so that snap binaries in /snap/bin are on PATH.
     Raises on failure so the caller can display an error notification.
     """
+    cmd = " ".join(args)
     kwargs = {}
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     subprocess.Popen(
-        ["wsl.exe", "-d", distro, "--"] + list(args),
+        ["wsl.exe", "-d", distro, "--", "bash", "-lc", cmd],
         **kwargs,
     )
 
