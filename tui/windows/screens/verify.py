@@ -55,6 +55,7 @@ class VerifyScreen(Screen):
             yield Static("Running verification...", id="verify-status")
             with Horizontal(classes="button-bar"):
                 yield Static(">> Launch File Manager <<", id="btn-launch-files", classes="action-link")
+                yield Static(">> Launch PyCharm <<", id="btn-launch-pycharm", classes="action-link")
                 yield Static(">> Open Ubuntu Terminal <<", id="btn-launch-terminal", classes="action-link")
                 yield Static(">> Exit <<", id="btn-exit", classes="action-link")
 
@@ -169,14 +170,15 @@ class VerifyScreen(Screen):
             status.update(f"[red]{total_failed} check(s) failed. See details above.[/]")
 
     def on_click(self, event) -> None:
-        from ...shared.launcher import launch_windows_terminal, launch_wsl_app
+        from ...shared.launcher import WSL_APP_BUTTONS, launch_windows_terminal, launch_wsl_app
 
         widget = event.widget
         widget_id = getattr(widget, "id", None)
-        if widget_id == "btn-launch-files":
+        if widget_id in WSL_APP_BUTTONS:
+            cmd, display_name = WSL_APP_BUTTONS[widget_id]
             try:
-                launch_wsl_app(self._config.distroImportName, "nautilus")
-                self.app.notify("Launched: nautilus")
+                launch_wsl_app(self._config.distroImportName, cmd)
+                self.app.notify(f"Launched: {display_name}")
             except Exception as e:
                 self.app.notify(f"Failed to launch: {e}", severity="error")
         elif widget_id == "btn-launch-terminal":

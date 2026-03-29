@@ -164,6 +164,7 @@ class WelcomeScreen(Screen):
                 yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
                 yield Static(">> Start Setup <<", id="btn-start", classes="action-link")
                 yield Static(">> Launch File Manager <<", id="btn-launch-files", classes="action-link")
+                yield Static(">> Launch PyCharm <<", id="btn-launch-pycharm", classes="action-link")
                 yield Static(">> Open Ubuntu Terminal <<", id="btn-launch-terminal", classes="action-link")
                 yield Static(">> Quit (Escape) <<", id="btn-quit", classes="action-link")
 
@@ -220,7 +221,7 @@ class WelcomeScreen(Screen):
 
     def on_click(self, event) -> None:
         """Handle clicks on action links and detail links."""
-        from ...shared.launcher import launch_windows_terminal, launch_wsl_app
+        from ...shared.launcher import WSL_APP_BUTTONS, launch_windows_terminal, launch_wsl_app
 
         widget = event.widget
         widget_id = getattr(widget, "id", None)
@@ -232,10 +233,11 @@ class WelcomeScreen(Screen):
         elif widget_id == "btn-start":
             from .setup import SetupScreen
             self.app.push_screen(SetupScreen(self._config))
-        elif widget_id == "btn-launch-files":
+        elif widget_id in WSL_APP_BUTTONS:
+            cmd, display_name = WSL_APP_BUTTONS[widget_id]
             try:
-                launch_wsl_app(self._config.distroImportName, "nautilus")
-                self.app.notify("Launched: nautilus")
+                launch_wsl_app(self._config.distroImportName, cmd)
+                self.app.notify(f"Launched: {display_name}")
             except Exception as e:
                 self.app.notify(f"Failed to launch: {e}", severity="error")
         elif widget_id == "btn-launch-terminal":

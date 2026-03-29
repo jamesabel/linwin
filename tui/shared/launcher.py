@@ -6,6 +6,14 @@ import subprocess
 import sys
 
 
+# Mapping of button IDs to (command, display_name).
+# Screens use this to resolve btn-launch-* clicks.
+WSL_APP_BUTTONS: dict[str, tuple[str, str]] = {
+    "btn-launch-files": ("nautilus", "File Manager"),
+    "btn-launch-pycharm": ("pycharm-community", "PyCharm"),
+}
+
+
 def launch_wsl_app(distro: str, *args: str) -> None:
     """Launch a GUI app inside WSL (non-blocking, fire-and-forget).
 
