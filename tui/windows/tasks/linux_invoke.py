@@ -44,7 +44,7 @@ async def run_linux_headless(
         ERROR:message
     """
     wsl_path = windows_to_wsl_path(script_dir_win)
-    cmd = f"cd '{wsl_path}' && python3 -m tui.linux --headless --phase {phase}"
+    cmd = f"python3 -m tui.linux --headless --phase {phase}"
 
     async def parse_line(line: str, stream: str) -> None:
         if line.startswith("TASK:"):
@@ -61,4 +61,4 @@ async def run_linux_headless(
             if on_line:
                 await on_line(line, stream)
 
-    return await run_wsl(config.distroImportName, cmd, on_line=parse_line)
+    return await run_wsl(config.distroImportName, cmd, on_line=parse_line, cwd=wsl_path)

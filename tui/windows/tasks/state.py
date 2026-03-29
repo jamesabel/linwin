@@ -23,9 +23,7 @@ def _state_file() -> Path:
 
 @dataclass
 class SetupState:
-    phase1_complete: bool = False
-    needs_reboot: bool = False
-    phase2_complete: bool = False
+    resume_from_task: str = ""
     config_path: str = ""
     timestamp: str = ""
 
@@ -42,7 +40,14 @@ def load_state() -> Optional[SetupState]:
     if sf.exists():
         try:
             data = json.loads(sf.read_text())
-            return SetupState(**data)
+            # Migrate old phase-based state format
+            if "phase1_complete" in data and data.get("needs_reboot"):
+                return SetupState(
+                    resume_from_task="update_wsl",
+                    config_path=data.get("config_path", ""),
+                    timestamp=data.get("timestamp", ""),
+                )
+            return SetupState(**{k: v for k, v in data.items() if k in SetupState.__dataclass_fields__})
         except (json.JSONDecodeError, TypeError):
             return None
     return None

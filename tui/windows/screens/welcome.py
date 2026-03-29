@@ -220,8 +220,8 @@ class WelcomeScreen(Screen):
             from .config_editor import ConfigEditorScreen
             self.app.push_screen(ConfigEditorScreen(self._config))
         elif widget_id == "btn-start":
-            from .phase1 import Phase1Screen
-            self.app.push_screen(Phase1Screen(self._config))
+            from .setup import SetupScreen
+            self.app.push_screen(SetupScreen(self._config))
         elif widget_id == "btn-quit":
             self.app.exit()
         elif widget_id in self._fail_details:

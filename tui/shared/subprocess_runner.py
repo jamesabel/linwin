@@ -122,12 +122,20 @@ async def run_wsl(
     distro: str,
     command: str,
     on_line: Optional[LineCallback] = None,
+    cwd: Optional[str] = None,
 ) -> SubprocessResult:
-    """Run a bash command inside a WSL distro."""
-    return await run_command(
-        ["wsl.exe", "-d", distro, "--", "bash", "-c", command],
-        on_line=on_line,
-    )
+    """Run a bash command inside a WSL distro.
+
+    Args:
+        cwd: Optional WSL path to set as working directory via --cd flag.
+             Use this instead of ``cd '...' &&`` in the command string to
+             avoid Windows command-line parsing issues with ``&&``.
+    """
+    args = ["wsl.exe", "-d", distro]
+    if cwd:
+        args.extend(["--cd", cwd])
+    args.extend(["--", "bash", "-c", command])
+    return await run_command(args, on_line=on_line)
 
 
 async def run_wsl_exec(

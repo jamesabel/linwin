@@ -7,9 +7,9 @@ from textual.app import App
 from ..shared.config import SetupConfig, load_config
 from ..shared.setup_logging import get_logger
 from ..shared.theme import SHARED_CSS
-from .screens.phase2 import Phase2Screen
+from .screens.setup import SetupScreen
 from .screens.welcome import WelcomeScreen
-from .tasks.state import clear_state, load_state
+from .tasks.state import load_state
 
 
 class WindowsSetupApp(App):
@@ -40,12 +40,12 @@ class WindowsSetupApp(App):
 
     def on_mount(self) -> None:
         log = get_logger()
-        # Check for saved state from a pre-reboot Phase 1
+        # Check for saved state from a pre-reboot run
         state = load_state()
-        if state and state.phase1_complete and state.needs_reboot:
-            # Post-reboot: go straight to Phase 2
-            log.info("Resuming after reboot -> Phase 2 (state timestamp=%s)", state.timestamp)
-            self.push_screen(Phase2Screen(self._config))
+        if state and state.resume_from_task:
+            log.info("Resuming after reboot -> SetupScreen (resume_from=%s, timestamp=%s)",
+                     state.resume_from_task, state.timestamp)
+            self.push_screen(SetupScreen(self._config, resume_from=state.resume_from_task))
         else:
             log.info("Starting fresh -> Welcome screen")
             self.push_screen(WelcomeScreen(self._config))
