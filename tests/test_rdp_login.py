@@ -159,16 +159,89 @@ class TestRdpPrerequisites:
     def test_startwm_configured_for_xfce4(self, distro):
         result = _run(run_wsl(
             distro,
-            "grep -q 'startxfce4' /etc/xrdp/startwm.sh && echo yes || echo no",
+            "grep -qE 'xfce4-session|startxfce4' /etc/xrdp/startwm.sh && echo yes || echo no",
         ))
         assert result.output.strip() == "yes", (
             "startwm.sh not configured for XFCE4"
+        )
+
+    def test_startwm_unsets_dbus(self, distro):
+        """startwm.sh must unset DBUS_SESSION_BUS_ADDRESS so XFCE4 creates
+        a fresh D-Bus session bus instead of reusing sesman's."""
+        result = _run(run_wsl(
+            distro,
+            "grep -q 'unset DBUS_SESSION_BUS_ADDRESS' /etc/xrdp/startwm.sh && echo yes || echo no",
+        ))
+        assert result.output.strip() == "yes", (
+            "startwm.sh missing 'unset DBUS_SESSION_BUS_ADDRESS' — "
+            "RDP sessions will crash immediately after login"
+        )
+
+    def test_colord_polkit_rule(self, distro):
+        """A polkit rule must allow colord actions without interactive auth.
+        Without this, clicking anything in the XFCE desktop triggers a
+        colord D-Bus activation that demands polkit auth, which fails
+        (no agent in xrdp) and crashes the session.
+        Ubuntu 24.04 uses polkit 124+ (JavaScript rules)."""
+        result = _run(run_wsl(
+            distro,
+            "test -f /etc/polkit-1/rules.d/45-allow-colord.rules"
+            " && echo yes || echo no",
+        ))
+        assert result.output.strip() == "yes", (
+            "colord polkit rule missing — RDP sessions will crash on interaction"
         )
 
     def test_xrdp_in_ssl_cert_group(self, distro):
         result = _run(run_wsl(distro, "id -nG xrdp 2>/dev/null"))
         assert "ssl-cert" in result.output.split(), (
             "xrdp user not in ssl-cert group"
+        )
+
+    def test_logind_user_stop_delay(self, distro):
+        """UserStopDelaySec must be infinity to prevent logind from killing
+        user@UID.service (and the entire XFCE desktop) seconds after login."""
+        result = _run(run_wsl(
+            distro,
+            "grep -q '^UserStopDelaySec=infinity' /etc/systemd/logind.conf"
+            " && echo yes || echo no",
+        ))
+        assert result.output.strip() == "yes", (
+            "UserStopDelaySec=infinity not set in logind.conf -- "
+            "RDP sessions will die seconds after login"
+        )
+
+    def test_user_linger_enabled(self, distro):
+        """Linger must be enabled so user@UID.service stays alive even when
+        logind doesn't track the xrdp session."""
+        # Find the primary non-root user (UID 1000) -- this is the user
+        # who will be logging in via RDP.
+        result = _run(run_wsl(
+            distro,
+            "getent passwd 1000 | cut -d: -f1",
+        ))
+        user = result.output.strip()
+        assert user, "No UID 1000 user found"
+        result = _run(run_wsl(
+            distro,
+            f"loginctl show-user {user} 2>/dev/null | grep -c Linger=yes",
+        ))
+        assert result.output.strip() == "1", (
+            f"loginctl linger not enabled for {user} -- user services may be killed"
+        )
+
+    def test_gdm_masked(self, distro):
+        """GDM must be masked to prevent it from cycling greeter sessions
+        that trigger logind power-off in WSL2."""
+        result = _run(run_wsl(
+            distro,
+            "systemctl is-enabled gdm 2>/dev/null; echo rc=$?",
+        ))
+        output = result.output.strip()
+        # masked -> exit 1 with "masked" output; not-found -> exit 1 with empty or error
+        assert "masked" in output or "not-found" in output or "No such file" in output, (
+            f"GDM is not masked or missing: {output}. "
+            "GDM interferes with xrdp sessions in WSL2"
         )
 
 

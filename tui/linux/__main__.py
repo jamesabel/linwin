@@ -260,7 +260,10 @@ def headless_configure_xrdp(config: dict) -> int:
     headless_task("xrdp_session", "running")
     headless_log("Configuring XFCE4 session for xrdp...")
     rc, out = run_cmd(
-        "grep -q 'startxfce4' /etc/xrdp/startwm.sh 2>/dev/null && echo yes || echo no"
+        "grep -q 'unset DBUS_SESSION_BUS_ADDRESS' /etc/xrdp/startwm.sh 2>/dev/null"
+        " && grep -q 'XDG_CURRENT_DESKTOP=XFCE' /etc/xrdp/startwm.sh 2>/dev/null"
+        " && grep -q 'xfce4-session' /etc/xrdp/startwm.sh 2>/dev/null"
+        " && echo yes || echo no"
     )
     if out.strip() == "yes":
         headless_task("xrdp_session", "done")
@@ -269,6 +272,9 @@ def headless_configure_xrdp(config: dict) -> int:
         startwm = (
             "sudo tee /etc/xrdp/startwm.sh > /dev/null << 'STARTWM'\n"
             "#!/bin/sh\n"
+            "exec > /tmp/xrdp-startwm-${USER}.log 2>&1\n"
+            "unset DBUS_SESSION_BUS_ADDRESS\n"
+            "unset XDG_RUNTIME_DIR\n"
             "if test -r /etc/profile; then\n"
             "\t. /etc/profile\n"
             "fi\n"
@@ -276,7 +282,14 @@ def headless_configure_xrdp(config: dict) -> int:
             "\t. ~/.profile\n"
             "fi\n"
             "export XDG_SESSION_TYPE=x11\n"
-            "exec startxfce4\n"
+            "export XDG_CURRENT_DESKTOP=XFCE\n"
+            "export DESKTOP_SESSION=xfce\n"
+            'export XDG_MENU_PREFIX="xfce-"\n'
+            'mkdir -p "${HOME}/.config/autostart"\n'
+            "printf '[Desktop Entry]\\nHidden=true\\n'"
+            ' > "${HOME}/.config/autostart/light-locker.desktop"\n'
+            "eval $(dbus-launch --sh-syntax)\n"
+            "exec xfce4-session\n"
             "STARTWM"
         )
         rc, out = run_cmd(startwm)
@@ -285,6 +298,32 @@ def headless_configure_xrdp(config: dict) -> int:
         headless_task("xrdp_session", "done" if rc == 0 else "failed")
         if rc != 0:
             headless_error(f"Failed to configure XFCE4 session: {out}")
+            exit_code = 1
+
+    # Allow colord D-Bus calls without interactive polkit auth.
+    # Without this the desktop crashes when any app triggers colord.
+    # Ubuntu 24.04 uses polkit 124+ (JavaScript rules, not .pkla).
+    headless_task("xrdp_colord", "running")
+    rules_file = "/etc/polkit-1/rules.d/45-allow-colord.rules"
+    rc, out = run_cmd(f"test -f {rules_file} && echo yes || echo no")
+    if out.strip() == "yes":
+        headless_task("xrdp_colord", "done")
+        headless_log("colord polkit rule already present.")
+    else:
+        headless_log("Creating colord polkit rule...")
+        colord_rule = (
+            f"sudo tee {rules_file} > /dev/null << 'RULES'\n"
+            "polkit.addRule(function(action, subject) {\n"
+            '    if (action.id.indexOf("org.freedesktop.color-manager.") == 0) {\n'
+            "        return polkit.Result.YES;\n"
+            "    }\n"
+            "});\n"
+            "RULES"
+        )
+        rc, out = run_cmd(colord_rule)
+        headless_task("xrdp_colord", "done" if rc == 0 else "failed")
+        if rc != 0:
+            headless_error(f"Failed to create colord polkit rule: {out}")
             exit_code = 1
 
     # Fix SSL key permissions (xrdp needs to read the TLS key)
@@ -301,44 +340,132 @@ def headless_configure_xrdp(config: dict) -> int:
             headless_error(f"Failed to fix SSL permissions: {out}")
             exit_code = 1
 
-    # Create systemd overrides to prevent PID file race conditions
+    # Write full systemd unit replacement files for xrdp.
+    # Drop-in overrides (.service.d/override.conf) DO NOT WORK for clearing
+    # BindsTo= on systemd 255 -- the reset is ignored and the vendor value
+    # is kept, causing sesman to be yanked down whenever the xrdp socket
+    # closes.  Full replacement files completely supersede the vendor units.
     headless_task("xrdp_systemd", "running")
-    headless_log("Creating systemd overrides for xrdp...")
-    xrdp_override = (
-        "sudo mkdir -p /etc/systemd/system/xrdp.service.d && "
-        "sudo tee /etc/systemd/system/xrdp.service.d/override.conf > /dev/null << 'EOF'\n"
-        "[Unit]\n"
-        "Requires=\n"
-        "Wants=xrdp-sesman.service\n"
-        "[Service]\n"
-        "Type=exec\n"
-        "ExecStart=\n"
-        "ExecStart=/usr/sbin/xrdp --nodaemon\n"
-        "PIDFile=\n"
-        "EOF"
+    headless_log("Writing systemd unit replacements for xrdp...")
+    rc, out = run_cmd(
+        "grep -q 'Type=exec' /etc/systemd/system/xrdp.service 2>/dev/null"
+        " && grep -q 'Type=exec' /etc/systemd/system/xrdp-sesman.service 2>/dev/null"
+        " && grep -q 'Restart=on-failure' /etc/systemd/system/xrdp.service 2>/dev/null"
+        " && grep -q 'Restart=on-failure' /etc/systemd/system/xrdp-sesman.service 2>/dev/null"
+        " && echo yes || echo no"
     )
-    sesman_override = (
-        "sudo mkdir -p /etc/systemd/system/xrdp-sesman.service.d && "
-        "sudo tee /etc/systemd/system/xrdp-sesman.service.d/override.conf > /dev/null << 'EOF'\n"
-        "[Unit]\n"
-        "BindsTo=\n"
-        "StopWhenUnneeded=false\n"
-        "[Service]\n"
-        "Type=exec\n"
-        "ExecStart=\n"
-        "ExecStart=/usr/sbin/xrdp-sesman --nodaemon\n"
-        "PIDFile=\n"
-        "EOF"
-    )
-    rc1, _ = run_cmd(xrdp_override)
-    rc2, _ = run_cmd(sesman_override)
-    if rc1 == 0 and rc2 == 0:
-        run_cmd("sudo systemctl daemon-reload")
+    if out.strip() == "yes":
         headless_task("xrdp_systemd", "done")
+        headless_log("systemd unit replacements already configured.")
     else:
-        headless_task("xrdp_systemd", "failed")
-        headless_error("Failed to create systemd overrides")
-        exit_code = 1
+        xrdp_unit = (
+            "sudo tee /etc/systemd/system/xrdp.service > /dev/null << 'EOF'\n"
+            "[Unit]\n"
+            "Description=xrdp daemon\n"
+            "After=network.target xrdp-sesman.service\n"
+            "Wants=xrdp-sesman.service\n"
+            "[Service]\n"
+            "Type=exec\n"
+            "ExecStartPre=+/bin/sh /usr/share/xrdp/socksetup\n"
+            "ExecStart=/usr/sbin/xrdp --nodaemon\n"
+            "ExecStop=\n"
+            "PIDFile=\n"
+            "User=xrdp\n"
+            "Group=xrdp\n"
+            "RuntimeDirectory=xrdp\n"
+            "Restart=on-failure\n"
+            "RestartSec=3\n"
+            "[Install]\n"
+            "WantedBy=multi-user.target\n"
+            "EOF"
+        )
+        sesman_unit = (
+            "sudo tee /etc/systemd/system/xrdp-sesman.service > /dev/null << 'EOF'\n"
+            "[Unit]\n"
+            "Description=xrdp session manager\n"
+            "After=network.target\n"
+            "[Service]\n"
+            "Type=exec\n"
+            "ExecStart=/usr/sbin/xrdp-sesman --nodaemon\n"
+            "ExecStop=\n"
+            "PIDFile=\n"
+            "RuntimeDirectory=xrdp\n"
+            "Restart=on-failure\n"
+            "RestartSec=3\n"
+            "[Install]\n"
+            "WantedBy=multi-user.target\n"
+            "EOF"
+        )
+        rc1, _ = run_cmd(xrdp_unit)
+        rc2, _ = run_cmd(sesman_unit)
+        if rc1 == 0 and rc2 == 0:
+            run_cmd("sudo systemctl daemon-reload")
+            headless_task("xrdp_systemd", "done")
+        else:
+            headless_task("xrdp_systemd", "failed")
+            headless_error("Failed to write systemd unit replacements")
+            exit_code = 1
+
+    # Prevent logind from killing user services prematurely.
+    # xrdp sessions are not always visible to logind, so without this
+    # the user manager (and XFCE desktop) gets killed seconds after login.
+    headless_task("xrdp_logind", "running")
+    rc, out = run_cmd(
+        "grep -q '^UserStopDelaySec=infinity' /etc/systemd/logind.conf 2>/dev/null"
+        " && echo yes || echo no"
+    )
+    if out.strip() == "yes":
+        headless_task("xrdp_logind", "done")
+        headless_log("UserStopDelaySec already set.")
+    else:
+        headless_log("Setting UserStopDelaySec=infinity in logind.conf...")
+        rc, out = run_cmd(
+            r"sudo sed -i 's/^#\?UserStopDelaySec=.*/UserStopDelaySec=infinity/' /etc/systemd/logind.conf 2>&1"
+        )
+        if rc == 0:
+            run_cmd("sudo systemctl restart systemd-logind 2>&1")
+        headless_task("xrdp_logind", "done" if rc == 0 else "failed")
+        if rc != 0:
+            headless_error(f"Failed to configure logind: {out}")
+            exit_code = 1
+
+    # Enable linger so user@UID.service stays alive without logind sessions.
+    headless_task("xrdp_linger", "running")
+    rc, user_out = run_cmd("whoami")
+    user = user_out.strip()
+    rc, out = run_cmd(f"loginctl show-user {user} 2>/dev/null | grep Linger=yes")
+    if rc == 0 and "Linger=yes" in out:
+        headless_task("xrdp_linger", "done")
+        headless_log(f"Linger already enabled for {user}.")
+    else:
+        headless_log(f"Enabling linger for {user}...")
+        rc, out = run_cmd(f"loginctl enable-linger {user} 2>&1")
+        headless_task("xrdp_linger", "done" if rc == 0 else "failed")
+        if rc != 0:
+            headless_error(f"Failed to enable linger: {out}")
+            exit_code = 1
+
+    # Mask GDM to prevent it from interfering with xrdp sessions.
+    # GDM cycles greeter sessions on display :0 (no hardware in WSL2),
+    # eventually triggering logind to issue a system power-off.
+    headless_task("xrdp_gdm", "running")
+    rc, out = run_cmd("systemctl is-enabled gdm 2>/dev/null")
+    gdm_status = out.strip()
+    if gdm_status == "masked":
+        headless_task("xrdp_gdm", "done")
+        headless_log("GDM already masked.")
+    elif gdm_status in ("not-found", "") or "No such file" in out:
+        headless_task("xrdp_gdm", "done")
+        headless_log("GDM not installed.")
+    else:
+        headless_log("Masking GDM...")
+        rc, out = run_cmd("sudo systemctl mask gdm 2>&1")
+        if rc == 0:
+            run_cmd("sudo systemctl stop gdm 2>/dev/null")
+        headless_task("xrdp_gdm", "done" if rc == 0 else "failed")
+        if rc != 0:
+            headless_error(f"Failed to mask GDM: {out}")
+            exit_code = 1
 
     # Enable and start xrdp service
     headless_task("xrdp_service", "running")
