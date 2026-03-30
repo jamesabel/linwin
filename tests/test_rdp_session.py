@@ -1,6 +1,6 @@
 """End-to-end RDP session test: connect, login, verify session stability.
 
-Goes beyond auth-only testing — starts a real XFCE desktop session and
+Goes beyond auth-only testing -- starts a real XFCE desktop session and
 verifies it stays alive long enough for a user to interact with it.
 Collects full diagnostics (sesman log, startwm log, user journal,
 xfreerdp output) on failure to pinpoint exactly where the session dies.
@@ -8,16 +8,11 @@ xfreerdp output) on failure to pinpoint exactly where the session dies.
 
 from __future__ import annotations
 
-import asyncio
-import time
-from pathlib import Path
-
 import pytest
 
-from linwin.shared.config import load_config
 from linwin.shared.subprocess_runner import run_command, run_wsl
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
+from conftest import _run, _cert_flag, _collect_diagnostics
 
 TEST_USER = "_rdptest"
 TEST_PASS = "WslRdpTest2024x"
@@ -26,29 +21,9 @@ TEST_PASS = "WslRdpTest2024x"
 SESSION_STABILITY_SECS = 15
 
 
-def _run(coro):
-    """Run an async coroutine synchronously."""
-    return asyncio.run(coro)
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="module")
-def config():
-    return load_config(CONFIG_PATH)
-
-
-@pytest.fixture(scope="module")
-def distro(config):
-    return config.distroImportName
-
-
-@pytest.fixture(scope="module")
-def xrdp_port(config):
-    return config.xrdpPort
-
 
 @pytest.fixture(scope="module")
 def rdp_test_user(distro):
@@ -71,62 +46,6 @@ def rdp_test_user(distro):
     _run(run_wsl(distro, f"sudo pkill -9 -u {TEST_USER} 2>/dev/null; sleep 2"))
     _run(run_wsl(distro, "sudo systemctl restart xrdp xrdp-sesman"))
     _run(run_wsl(distro, f"sudo userdel -r {TEST_USER} 2>/dev/null"))
-
-
-@pytest.fixture(scope="module")
-def xfreerdp_bin(distro):
-    """Return the xfreerdp binary name, installing if needed."""
-    for binary in ("xfreerdp3", "xfreerdp"):
-        r = _run(run_wsl(distro, f"which {binary} 2>/dev/null"))
-        if r.success and r.output.strip():
-            return binary
-    r = _run(run_wsl(distro, "sudo apt-get install -y freerdp2-x11 2>&1"))
-    if r.success:
-        return "xfreerdp"
-    pytest.skip("xfreerdp not available and could not be installed")
-
-
-@pytest.fixture(scope="module")
-def ensure_xvfb(distro):
-    """Ensure Xvfb is installed for headless display."""
-    r = _run(run_wsl(distro, "which Xvfb 2>/dev/null"))
-    if r.success and r.output.strip():
-        return True
-    r = _run(run_wsl(distro, "sudo apt-get install -y xvfb 2>&1"))
-    if r.success:
-        return True
-    pytest.skip("Xvfb not available and could not be installed")
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _cert_flag(binary: str) -> str:
-    return "/cert:ignore" if binary == "xfreerdp3" else "/cert-ignore"
-
-
-def _collect_diagnostics(distro: str) -> str:
-    """Collect all relevant logs after a session failure."""
-    sections: list[str] = []
-
-    checks = [
-        ("xrdp-sesman.log", "sudo tail -40 /var/log/xrdp-sesman.log 2>/dev/null"),
-        ("xrdp.log", "sudo tail -20 /var/log/xrdp.log 2>/dev/null"),
-        ("startwm.sh", "cat /etc/xrdp/startwm.sh 2>/dev/null"),
-        ("user journal", "journalctl _UID=$(id -u _rdptest 2>/dev/null) --no-pager -n 30 2>/dev/null"),
-        ("system journal (xrdp)", "journalctl -u xrdp -u xrdp-sesman --no-pager -n 30 2>/dev/null"),
-        ("xfce processes", "ps -u _rdptest -o pid,stat,args 2>/dev/null"),
-        ("loginctl sessions", "loginctl list-sessions --no-pager 2>/dev/null"),
-        ("systemd user status", "systemctl --user status 2>/dev/null"),
-    ]
-    for label, cmd in checks:
-        r = _run(run_wsl(distro, cmd))
-        text = r.output.strip() if r.success else f"(command failed: exit {r.exit_code})"
-        if text:
-            sections.append(f"--- {label} ---\n{text}")
-
-    return "\n\n".join(sections)
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +139,8 @@ class TestRdpSessionLifecycle:
             f.write(script_content)
 
         # Convert Windows path to WSL path and copy
-        wsl_tmp = tmp.replace("\\", "/").replace("C:", "/mnt/c")
+        wsl_tmp = tmp.replace("\\", "/")
+        wsl_tmp = f"/mnt/{wsl_tmp[0].lower()}{wsl_tmp[2:]}"
         _run(run_wsl(distro, f"cp '{wsl_tmp}' /tmp/rdp_session_test.sh && chmod +x /tmp/rdp_session_test.sh"))
 
         result = _run(run_command(
@@ -234,7 +154,7 @@ class TestRdpSessionLifecycle:
             return  # success
 
         # --- Failure: build a detailed report ---
-        diagnostics = _collect_diagnostics(distro)
+        diagnostics = _collect_diagnostics(distro, TEST_USER)
 
         died_at = "unknown"
         for line in output.splitlines():
@@ -301,7 +221,8 @@ class TestRdpSessionLifecycle:
         with open(tmp, "w", newline="\n") as f:
             f.write(script_content)
 
-        wsl_tmp = tmp.replace("\\", "/").replace("C:", "/mnt/c")
+        wsl_tmp = tmp.replace("\\", "/")
+        wsl_tmp = f"/mnt/{wsl_tmp[0].lower()}{wsl_tmp[2:]}"
         _run(run_wsl(distro, f"cp '{wsl_tmp}' /tmp/rdp_process_test.sh && chmod +x /tmp/rdp_process_test.sh"))
 
         result = _run(run_command(
@@ -312,7 +233,7 @@ class TestRdpSessionLifecycle:
         output = result.output
 
         if "XFREERDP_DEAD" in output:
-            diagnostics = _collect_diagnostics(distro)
+            diagnostics = _collect_diagnostics(distro, TEST_USER)
             pytest.fail(
                 f"xfce4-session not started within 15s.\n\n"
                 f"--- output ---\n{output}\n\n"

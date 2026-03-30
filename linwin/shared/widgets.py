@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from rich.markup import escape as rich_escape
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import DataTable, Label, RichLog, Static
+from textual.widgets import DataTable, Input, Label, RichLog, Static
 
 from .setup_logging import get_logger
 
@@ -107,6 +107,24 @@ class AsciiRadioSet(Widget):
             self.pressed_index = idx
             self.post_message(self.Changed(self, idx))
 
+
+
+def field_row(label: str, value: str, input_id: str) -> Horizontal:
+    """Create a label + input row for config editor forms."""
+    return Horizontal(
+        Label(label, classes="field-label"),
+        Input(value=value, id=input_id, classes="field-input"),
+        classes="field-row",
+    )
+
+
+def info_row(label: str, value: str) -> Horizontal:
+    """Create a label + value row for info displays."""
+    return Horizontal(
+        Label(label, classes="info-label"),
+        Label(value, classes="info-value"),
+        classes="info-row",
+    )
 
 
 class TaskRow(Widget):
@@ -251,6 +269,13 @@ class LogPanel(Widget):
         get_logger().error("FAIL: %s", msg)
         self._plain_lines.append(f"ERROR: {msg}")
         self.log.write(f"[bold red]{rich_escape(msg)}[/]")
+
+    async def as_line_callback(self, line: str, stream: str) -> None:
+        """Use as an on_line callback for subprocess runners."""
+        if stream == "stderr":
+            self.write_stderr(line)
+        else:
+            self.write_stdout(line)
 
     def clear(self) -> None:
         self._plain_lines.clear()

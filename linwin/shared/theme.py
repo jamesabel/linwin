@@ -92,4 +92,36 @@ ProgressBar {
 .info-pass { color: $success; }
 .info-fail { color: $error; }
 .info-warn { color: $warning; }
+
+/* Common screen patterns */
+.button-bar {
+    height: auto;
+    padding: 1 2;
+    align-horizontal: center;
+}
+.action-link {
+    margin: 0 2;
+    padding: 0 2;
+    text-style: bold;
+}
+.hidden {
+    display: none;
+}
+.field-row {
+    height: 3;
+    padding: 0 1;
+}
+.field-label {
+    width: 1fr;
+    padding: 1 1;
+    text-style: bold;
+}
+.field-input {
+    width: 2fr;
+}
+.section-header {
+    text-style: bold;
+    color: $primary;
+    margin-bottom: 1;
+}
 """

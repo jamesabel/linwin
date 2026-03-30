@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -22,6 +21,14 @@ class WslConfig:
 class SnapPackage:
     name: str
     classic: bool = True
+
+
+# Snap packages offered in the config editor UI.
+AVAILABLE_SNAPS: list[tuple[str, str]] = [
+    ("code", "VS Code"),
+    ("intellij-idea-community", "IntelliJ IDEA Community"),
+    ("pycharm-community", "PyCharm Community"),
+]
 
 
 @dataclass
@@ -60,7 +67,7 @@ class SetupConfig:
         return asdict(self)
 
 
-def get_config_path(script_path: Optional[str] = None) -> Path:
+def get_config_path(script_path: str | None = None) -> Path:
     """Find config.json relative to the given script or the package root."""
     if script_path:
         p = Path(script_path).resolve().parent / "config.json"
@@ -76,7 +83,7 @@ def get_config_path(script_path: Optional[str] = None) -> Path:
     raise FileNotFoundError("config.json not found")
 
 
-def load_config(path: Optional[Path] = None) -> SetupConfig:
+def load_config(path: Path | None = None) -> SetupConfig:
     if path is None:
         path = get_config_path()
     with open(path, "r") as f:
@@ -84,7 +91,7 @@ def load_config(path: Optional[Path] = None) -> SetupConfig:
     return SetupConfig.from_dict(data)
 
 
-def save_config(config: SetupConfig, path: Optional[Path] = None) -> None:
+def save_config(config: SetupConfig, path: Path | None = None) -> None:
     if path is None:
         path = get_config_path()
     with open(path, "w") as f:

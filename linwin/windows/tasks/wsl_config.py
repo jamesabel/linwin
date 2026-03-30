@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import configparser
+import io
 import os
 from dataclasses import dataclass
 
@@ -22,18 +24,19 @@ def get_wslconfig_path() -> str:
 
 def generate_wslconfig_content(config: SetupConfig) -> str:
     wc = config.wslconfig
-    # .wslconfig uses INI format — backslashes in paths must be escaped
-    # or replaced with forward slashes to avoid invalid-escape errors.
-    swap_path = wc.swapFile.replace("\\", "/")
-    return (
-        f"[wsl2]\n"
-        f"memory={wc.memory}\n"
-        f"processors={wc.processors}\n"
-        f"swap={wc.swap}\n"
-        f"swapFile={swap_path}\n"
-        f"guiApplications={str(wc.guiApplications).lower()}\n"
-        f"defaultVhdSize={wc.defaultVhdSize}\n"
-    )
+    cp = configparser.ConfigParser()
+    cp.optionxform = str  # preserve case
+    cp["wsl2"] = {
+        "memory": wc.memory,
+        "processors": str(wc.processors),
+        "swap": wc.swap,
+        "swapFile": wc.swapFile.replace("\\", "/"),
+        "guiApplications": str(wc.guiApplications).lower(),
+        "defaultVhdSize": wc.defaultVhdSize,
+    }
+    buf = io.StringIO()
+    cp.write(buf)
+    return buf.getvalue()
 
 
 def check_wslconfig_exists() -> tuple[bool, str]:

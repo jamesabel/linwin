@@ -7,7 +7,6 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 
 def _state_dir() -> Path:
@@ -35,7 +34,7 @@ def save_state(state: SetupState) -> None:
     _state_file().write_text(json.dumps(asdict(state), indent=2))
 
 
-def load_state() -> Optional[SetupState]:
+def load_state() -> SetupState | None:
     sf = _state_file()
     if sf.exists():
         try:

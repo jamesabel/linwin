@@ -7,8 +7,8 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Input, Label, Static
 
-from ...shared.config import SetupConfig, SnapPackage, save_config
-from ...shared.widgets import AsciiCheckbox
+from ...shared.config import AVAILABLE_SNAPS, SetupConfig, SnapPackage, save_config
+from ...shared.widgets import AsciiCheckbox, field_row
 
 
 class ConfigEditorScreen(Screen):
@@ -25,42 +25,10 @@ class ConfigEditorScreen(Screen):
         margin: 1 2;
         height: auto;
     }
-    .section-header {
-        text-style: bold;
-        color: $primary;
-        margin-bottom: 1;
-    }
-    .field-row {
-        height: 1;
-        layout: horizontal;
-    }
-    .field-row Label {
-        width: 20;
-        text-style: bold;
-    }
-    .field-row Input {
-        width: 1fr;
-    }
-    .button-bar {
-        height: auto;
-        padding: 1 2;
-        align-horizontal: center;
-    }
-    .action-link {
-        margin: 0 2;
-        padding: 0 2;
-        text-style: bold;
-    }
     #btn-save {
         color: $success;
     }
     """
-
-    AVAILABLE_SNAPS = [
-        ("code", "VS Code"),
-        ("intellij-idea-community", "IntelliJ IDEA Community"),
-        ("pycharm-community", "PyCharm Community"),
-    ]
 
     def __init__(self, config: SetupConfig, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -72,12 +40,12 @@ class ConfigEditorScreen(Screen):
             with Vertical(classes="editor-section"):
                 yield Static("IDE Selection (Snaps)", classes="section-header")
                 selected = {s.name for s in c.snaps}
-                for snap_id, snap_label in self.AVAILABLE_SNAPS:
+                for snap_id, snap_label in AVAILABLE_SNAPS:
                     yield AsciiCheckbox(snap_label, value=snap_id in selected, id=f"snap-{snap_id}")
 
             with Vertical(classes="editor-section"):
                 yield Static("Apt Packages", classes="section-header")
-                yield _field("Packages:", ", ".join(c.aptPackages), "input-apt-packages")
+                yield field_row("Packages:", ", ".join(c.aptPackages), "input-apt-packages")
 
             with Vertical(classes="editor-section"):
                 yield Static("Options", classes="section-header")
@@ -106,7 +74,7 @@ class ConfigEditorScreen(Screen):
 
         # Snaps
         snaps = []
-        for snap_id, _ in self.AVAILABLE_SNAPS:
+        for snap_id, _ in AVAILABLE_SNAPS:
             cb = self.query_one(f"#snap-{snap_id}", AsciiCheckbox)
             if cb.value:
                 snaps.append(SnapPackage(snap_id, True))
@@ -122,8 +90,3 @@ class ConfigEditorScreen(Screen):
         save_config(c)
 
 
-def _field(label: str, value: str, input_id: str) -> Horizontal:
-    row = Horizontal(classes="field-row")
-    row.compose_add_child(Label(label))
-    row.compose_add_child(Input(value=value, id=input_id))
-    return row

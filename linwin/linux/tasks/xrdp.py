@@ -4,15 +4,12 @@ from __future__ import annotations
 
 from ...shared.subprocess_runner import LineCallback, run_local
 from ...shared.task_result import TaskResult
+from .apt import is_apt_installed
 
 
 async def is_xrdp_installed(on_line: LineCallback | None = None) -> bool:
     """Check if xrdp is installed."""
-    result = await run_local(
-        "dpkg -l xrdp 2>/dev/null | grep -q '^ii' && echo yes || echo no",
-        on_line,
-    )
-    return result.output.strip() == "yes"
+    return await is_apt_installed("xrdp", on_line)
 
 
 XRDP_PACKAGES = "xrdp dbus-x11 xfce4 xfce4-terminal"
@@ -26,11 +23,7 @@ async def install_xrdp(on_line: LineCallback | None = None) -> TaskResult:
     """
     all_installed = True
     for pkg in XRDP_PACKAGES.split():
-        check = await run_local(
-            f"dpkg -l {pkg} 2>/dev/null | grep -q '^ii' && echo yes || echo no",
-            on_line,
-        )
-        if check.output.strip() != "yes":
+        if not await is_apt_installed(pkg, on_line):
             all_installed = False
             break
     if all_installed:

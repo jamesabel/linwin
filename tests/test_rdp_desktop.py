@@ -10,22 +10,17 @@ A background ``wsl.exe -- sleep infinity`` keepalive is used to prevent this.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import socket
-import ssl
-import struct
 import subprocess
 import tempfile
 import time
-from pathlib import Path
 
 import pytest
 
-from linwin.shared.config import load_config
 from linwin.shared.subprocess_runner import run_command, run_wsl
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
+from conftest import _run, _cert_flag, _recv_exact, _collect_diagnostics
 
 TEMP_PASSWORD = "TempRdpDesktopTest2024x"
 
@@ -33,34 +28,9 @@ TEMP_PASSWORD = "TempRdpDesktopTest2024x"
 SESSION_STABILITY_SECS = 15
 
 
-def _run(coro):
-    """Run an async coroutine synchronously."""
-    return asyncio.run(coro)
-
-
-def _cert_flag(binary: str) -> str:
-    """Return the correct cert-ignore flag for the freerdp version."""
-    return "/cert:ignore" if binary == "xfreerdp3" else "/cert-ignore"
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="module")
-def config():
-    return load_config(CONFIG_PATH)
-
-
-@pytest.fixture(scope="module")
-def distro(config):
-    return config.distroImportName
-
-
-@pytest.fixture(scope="module")
-def xrdp_port(config):
-    return config.xrdpPort
-
 
 @pytest.fixture(scope="module")
 def wsl_keepalive(distro):
@@ -84,7 +54,7 @@ def wsl_keepalive(distro):
             break
         time.sleep(1)
     yield proc
-    # Do NOT kill the keepalive — leave WSL running so the user can
+    # Do NOT kill the keepalive -- leave WSL running so the user can
     # connect with mstsc immediately after the test finishes.
 
 
@@ -122,7 +92,7 @@ def rdp_user(distro, primary_user):
     yield primary_user
 
     # Teardown: kill leftover session processes, restore password.
-    # Do NOT restart xrdp — the keepalive keeps WSL alive and xrdp
+    # Do NOT restart xrdp -- the keepalive keeps WSL alive and xrdp
     # must remain running for the user to connect after tests finish.
     _run(run_wsl(distro, f"sudo pkill -9 -u {primary_user} xfce4-session 2>/dev/null"))
     _run(run_wsl(distro, f"sudo pkill -f xfreerdp 2>/dev/null"))
@@ -135,7 +105,8 @@ def rdp_user(distro, primary_user):
         hash_file = os.path.join(_tf.gettempdir(), "pw_restore.txt")
         with open(hash_file, "w", newline="\n") as hf:
             hf.write(f"{primary_user}:{original_hash}\n")
-        wsl_hash = hash_file.replace("\\", "/").replace("C:", "/mnt/c")
+        wsl_hash = hash_file.replace("\\", "/")
+        wsl_hash = f"/mnt/{wsl_hash[0].lower()}{wsl_hash[2:]}"
         _run(run_wsl(distro, f"sudo chpasswd -e < '{wsl_hash}'"))
         os.unlink(hash_file)
     else:
@@ -184,34 +155,12 @@ def ensure_xvfb(distro, wsl_keepalive):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _collect_diagnostics(distro: str, user: str) -> str:
-    """Collect all relevant logs after a session failure."""
-    sections: list[str] = []
-
-    checks = [
-        ("xrdp-sesman.log", "sudo tail -40 /var/log/xrdp-sesman.log 2>/dev/null"),
-        ("xrdp.log", "sudo tail -20 /var/log/xrdp.log 2>/dev/null"),
-        ("startwm log", f"cat /tmp/xrdp-startwm-{user}.log 2>/dev/null"),
-        ("startwm.sh", "cat /etc/xrdp/startwm.sh 2>/dev/null"),
-        ("system journal (xrdp)", "journalctl -u xrdp -u xrdp-sesman --no-pager -n 30 2>/dev/null"),
-        ("user processes", f"ps -u {user} -o pid,etimes,stat,args 2>/dev/null"),
-        ("loginctl sessions", "loginctl list-sessions --no-pager 2>/dev/null"),
-        ("boot list (last 5)", "journalctl --list-boots 2>/dev/null | tail -5"),
-    ]
-    for label, cmd in checks:
-        r = _run(run_wsl(distro, cmd))
-        text = r.output.strip() if r.success else f"(command failed: exit {r.exit_code})"
-        if text:
-            sections.append(f"--- {label} ---\n{text}")
-
-    return "\n\n".join(sections)
-
-
 def _copy_screenshot_from_wsl(distro: str, wsl_path: str, local_dir: str) -> str:
     """Copy a screenshot from WSL to a local Windows temp directory."""
     basename = os.path.basename(wsl_path)
     local_path = os.path.join(local_dir, basename)
-    wsl_local = local_path.replace("\\", "/").replace("C:", "/mnt/c")
+    wsl_local = local_path.replace("\\", "/")
+    wsl_local = f"/mnt/{wsl_local[0].lower()}{wsl_local[2:]}"
     r = _run(run_wsl(distro, f"test -f '{wsl_path}' && cp '{wsl_path}' '{wsl_local}' && echo copied"))
     if r.success and "copied" in r.output:
         return local_path
@@ -347,7 +296,8 @@ echo "SUCCESS"
     with open(tmp, "w", newline="\n") as f:
         f.write(script)
 
-    wsl_tmp = tmp.replace("\\", "/").replace("C:", "/mnt/c")
+    wsl_tmp = tmp.replace("\\", "/")
+    wsl_tmp = f"/mnt/{wsl_tmp[0].lower()}{wsl_tmp[2:]}"
     _run(run_wsl(distro, f"cp '{wsl_tmp}' /tmp/rdp_{session_label}.sh && chmod +x /tmp/rdp_{session_label}.sh"))
 
     total_timeout = stability_secs + 90
@@ -357,17 +307,6 @@ echo "SUCCESS"
     ))
 
     return ("SUCCESS" in result.output, result.output)
-
-
-def _recv_exact(sock: socket.socket, n: int) -> bytes:
-    """Receive exactly *n* bytes from *sock*, or raise on early close."""
-    buf = b""
-    while len(buf) < n:
-        chunk = sock.recv(n - len(buf))
-        if not chunk:
-            raise ConnectionError(f"Connection closed after {len(buf)}/{n} bytes")
-        buf += chunk
-    return buf
 
 
 def _assert_xrdp_accepts_connections(xrdp_port: int):
@@ -512,7 +451,7 @@ class TestRdpDesktopSession:
             f"xrdp-sesman not active after tests: {r.output.strip()}"
         )
 
-        # Check from Windows side — this is what mstsc needs
+        # Check from Windows side -- this is what mstsc needs
         _assert_xrdp_accepts_connections(xrdp_port)
 
     def test_screenshot_valid(
