@@ -31,7 +31,12 @@ class WindowsSetupApp(BaseSetupApp):
     async def _startup_check(self) -> None:
         from .tasks.health_check import run_health_check
         log = get_logger()
-        health = await run_health_check(self._config)
+        try:
+            health = await run_health_check(self._config)
+        except Exception:
+            log.exception("Health check crashed")
+            self.exit(return_code=1, message="Health check failed — see log for details")
+            return
         if health.ready:
             log.info("Health check passed -> LauncherScreen")
             from .screens.launcher import LauncherScreen
@@ -58,9 +63,9 @@ def relaunch_as_admin() -> None:
     import sys
     # Use -m to preserve relative imports; sys.argv may be a __main__.py
     # path which fails when run directly.
-    args = "-m tui.windows"
+    args = "-m linwin.windows"
     # Pass the current working directory so the elevated process can find
-    # config.json and the tui package (ShellExecuteW defaults to System32).
+    # config.json and the linwin package (ShellExecuteW defaults to System32).
     cwd = os.getcwd()
     ctypes.windll.shell32.ShellExecuteW(
         None, "runas", sys.executable,

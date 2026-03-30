@@ -38,7 +38,11 @@ def main() -> None:
     print(f"Logging to {get_log_dir() / 'setup.log'}")
 
     app = WindowsSetupApp(config)
-    app.run()
+    try:
+        app.run()
+    except Exception:
+        log.exception("App crashed with unhandled exception")
+        raise
     log.info("Windows TUI exited")
 
 

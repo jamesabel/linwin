@@ -33,7 +33,7 @@ A standalone Linux TUI is also available for running inside WSL Ubuntu directly:
 
 ```bash
 pip3 install textual
-python3 -m tui.linux
+python3 -m linwin.linux
 ```
 
 ### Keyboard Shortcuts
@@ -66,9 +66,9 @@ Edit `config.json` before running, or use the built-in Configure Settings screen
 | Path | Description |
 |------|-------------|
 | `setup_wsl.bat` | Entry point -- installs dependencies, then launches the TUI |
-| `tui/windows/` | Windows TUI package -- guides entire setup with live progress |
-| `tui/linux/` | Linux TUI package for WSL-side setup (also supports `--headless`) |
-| `tui/shared/` | Shared widgets, config, theme, and subprocess utilities |
+| `linwin/windows/` | Windows TUI package -- guides entire setup with live progress |
+| `linwin/linux/` | Linux TUI package for WSL-side setup (also supports `--headless`) |
+| `linwin/shared/` | Shared widgets, config, theme, and subprocess utilities |
 | `tests/` | pytest test suite (70 tests) |
 | `config.json` | Default configuration |
 

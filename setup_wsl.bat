@@ -45,4 +45,4 @@ echo.
 
 :: Launch the setup TUI
 set PYTHONIOENCODING=utf-8
-uv run python -m tui.windows
+uv run python -m linwin.windows

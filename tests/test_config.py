@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tui.shared.config import (
+from linwin.shared.config import (
     SetupConfig,
     SnapPackage,
     WslConfig,

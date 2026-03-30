@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from tui.shared.subprocess_runner import SubprocessResult, run_command, run_local
+from linwin.shared.subprocess_runner import SubprocessResult, run_command, run_local
 
 
 class TestSubprocessResult:
