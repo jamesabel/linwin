@@ -42,6 +42,9 @@ class VerifyScreen(Screen):
     #btn-launch-terminal {
         color: $accent;
     }
+    #btn-launcher {
+        color: $accent;
+    }
     """
 
     def __init__(self, config: SetupConfig, **kwargs) -> None:
@@ -54,6 +57,7 @@ class VerifyScreen(Screen):
             yield VerifyDashboard(title="Linux Checks", id="linux-verify")
             yield Static("Running verification...", id="verify-status")
             with Horizontal(classes="button-bar"):
+                yield Static(">> Back to Launcher <<", id="btn-launcher", classes="action-link")
                 yield Static(">> Launch File Manager <<", id="btn-launch-files", classes="action-link")
                 yield Static(">> Launch PyCharm <<", id="btn-launch-pycharm", classes="action-link")
                 yield Static(">> Open Ubuntu Terminal <<", id="btn-launch-terminal", classes="action-link")
@@ -151,6 +155,31 @@ class VerifyScreen(Screen):
             wslg_dir = result.output.strip() == "yes"
             linux_dash.add_check("/mnt/wslg exists", wslg_dir, warn=not wslg_dir)
 
+            # xfce4 (used for xrdp sessions — GNOME requires 3D accel)
+            result = await run_wsl(
+                config.distroImportName,
+                "dpkg -l xfce4 2>/dev/null | grep -q '^ii' && echo yes || echo no",
+            )
+            linux_dash.add_check("apt: xfce4", result.output.strip() == "yes")
+
+            # xrdp
+            result = await run_wsl(
+                config.distroImportName,
+                "dpkg -l xrdp 2>/dev/null | grep -q '^ii' && echo yes || echo no",
+            )
+            linux_dash.add_check("apt: xrdp", result.output.strip() == "yes")
+
+            result = await run_wsl(config.distroImportName, "systemctl is-active xrdp 2>/dev/null")
+            xrdp_ok = result.output.strip() == "active"
+            linux_dash.add_check("xrdp service running", xrdp_ok)
+
+            result = await run_wsl(
+                config.distroImportName,
+                f"grep -m1 '^port=' /etc/xrdp/xrdp.ini 2>/dev/null",
+            )
+            port_ok = result.output.strip() == f"port={config.xrdpPort}"
+            linux_dash.add_check(f"xrdp port set to {config.xrdpPort}", port_ok)
+
             # V: mount
             dl = config.wslDriveLetter.lower()
             result = await run_wsl(config.distroImportName, f"test -d /mnt/{dl} && echo yes || echo no")
@@ -183,5 +212,8 @@ class VerifyScreen(Screen):
                 self.app.notify(f"Failed to launch: {e}", severity="error")
         elif widget_id == "btn-launch-terminal":
             launch_windows_terminal()
+        elif widget_id == "btn-launcher":
+            from .launcher import LauncherScreen
+            self.app.switch_screen(LauncherScreen(self._config))
         elif widget_id == "btn-exit":
             self.app.exit()

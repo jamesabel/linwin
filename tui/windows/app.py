@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from textual import work
+
 from ..shared.base_app import BaseSetupApp
 from ..shared.setup_logging import get_logger
 from .screens.setup import SetupScreen
-from .screens.welcome import WelcomeScreen
 from .tasks.state import load_state
 
 
@@ -23,8 +24,22 @@ class WindowsSetupApp(BaseSetupApp):
                      state.resume_from_task, state.timestamp)
             self.push_screen(SetupScreen(self._config, resume_from=state.resume_from_task))
         else:
-            log.info("Starting fresh -> Welcome screen")
-            self.push_screen(WelcomeScreen(self._config))
+            log.info("Running startup health check...")
+            self._startup_check()
+
+    @work
+    async def _startup_check(self) -> None:
+        from .tasks.health_check import run_health_check
+        log = get_logger()
+        health = await run_health_check(self._config)
+        if health.ready:
+            log.info("Health check passed -> LauncherScreen")
+            from .screens.launcher import LauncherScreen
+            self.push_screen(LauncherScreen(self._config))
+        else:
+            log.info("Health check failed -> StatusScreen")
+            from .screens.status import StatusScreen
+            self.push_screen(StatusScreen(self._config, health))
 
 
 def check_admin() -> bool:

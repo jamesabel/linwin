@@ -211,10 +211,151 @@ def headless_install_packages(config: dict) -> int:
     return exit_code
 
 
+def headless_configure_xrdp(config: dict) -> int:
+    """Install xrdp + xfce4, configure port/session, enable service.
+
+    GNOME Shell requires 3D acceleration which isn't available over RDP,
+    so we use XFCE4 which works reliably with xrdp.
+    """
+    exit_code = 0
+    port = config.get("xrdpPort", 3390)
+
+    # Ensure xrdp and xfce4 are installed
+    xrdp_packages = "xrdp dbus-x11 xfce4"
+    headless_task("xrdp_install", "running")
+    all_installed = True
+    for pkg in xrdp_packages.split():
+        rc, out = run_cmd(f"dpkg -l {pkg} 2>/dev/null | grep -q '^ii' && echo yes || echo no")
+        if out.strip() != "yes":
+            all_installed = False
+            break
+    if all_installed:
+        headless_task("xrdp_install", "done")
+        headless_log("xrdp packages already installed.")
+    else:
+        headless_log(f"Installing {xrdp_packages} (this may take a while)...")
+        rc, out = run_cmd(f"sudo apt install -y {xrdp_packages} 2>&1")
+        headless_task("xrdp_install", "done" if rc == 0 else "failed")
+        if rc != 0:
+            headless_error(f"Failed to install xrdp packages: {out}")
+            exit_code = 1
+
+    # Configure port (only change the first uncommented port= line)
+    headless_task("xrdp_port", "running")
+    headless_log(f"Setting xrdp port to {port}...")
+    rc, out = run_cmd(
+        f"grep -m1 '^port=' /etc/xrdp/xrdp.ini 2>/dev/null"
+    )
+    if out.strip() == f"port={port}":
+        headless_task("xrdp_port", "done")
+        headless_log(f"xrdp port already {port}.")
+    else:
+        rc, out = run_cmd(f"sudo sed -i '0,/^port=.*/s//port={port}/' /etc/xrdp/xrdp.ini 2>&1")
+        headless_task("xrdp_port", "done" if rc == 0 else "failed")
+        if rc != 0:
+            headless_error(f"Failed to set xrdp port: {out}")
+            exit_code = 1
+
+    # Configure XFCE4 session for xrdp
+    headless_task("xrdp_session", "running")
+    headless_log("Configuring XFCE4 session for xrdp...")
+    rc, out = run_cmd(
+        "grep -q 'startxfce4' /etc/xrdp/startwm.sh 2>/dev/null && echo yes || echo no"
+    )
+    if out.strip() == "yes":
+        headless_task("xrdp_session", "done")
+        headless_log("XFCE4 session already configured.")
+    else:
+        startwm = (
+            "sudo tee /etc/xrdp/startwm.sh > /dev/null << 'STARTWM'\n"
+            "#!/bin/sh\n"
+            "if test -r /etc/profile; then\n"
+            "\t. /etc/profile\n"
+            "fi\n"
+            "if test -r ~/.profile; then\n"
+            "\t. ~/.profile\n"
+            "fi\n"
+            "export XDG_SESSION_TYPE=x11\n"
+            "exec startxfce4\n"
+            "STARTWM"
+        )
+        rc, out = run_cmd(startwm)
+        if rc == 0:
+            run_cmd("sudo chmod +x /etc/xrdp/startwm.sh")
+        headless_task("xrdp_session", "done" if rc == 0 else "failed")
+        if rc != 0:
+            headless_error(f"Failed to configure XFCE4 session: {out}")
+            exit_code = 1
+
+    # Fix SSL key permissions (xrdp needs to read the TLS key)
+    headless_task("xrdp_ssl", "running")
+    rc, out = run_cmd("id -nG xrdp 2>/dev/null")
+    if "ssl-cert" in out.split():
+        headless_task("xrdp_ssl", "done")
+        headless_log("xrdp already in ssl-cert group.")
+    else:
+        headless_log("Adding xrdp to ssl-cert group...")
+        rc, out = run_cmd("sudo adduser xrdp ssl-cert 2>&1")
+        headless_task("xrdp_ssl", "done" if rc == 0 else "failed")
+        if rc != 0:
+            headless_error(f"Failed to fix SSL permissions: {out}")
+            exit_code = 1
+
+    # Create systemd overrides to prevent PID file race conditions
+    headless_task("xrdp_systemd", "running")
+    headless_log("Creating systemd overrides for xrdp...")
+    xrdp_override = (
+        "sudo mkdir -p /etc/systemd/system/xrdp.service.d && "
+        "sudo tee /etc/systemd/system/xrdp.service.d/override.conf > /dev/null << 'EOF'\n"
+        "[Unit]\n"
+        "Requires=\n"
+        "Wants=xrdp-sesman.service\n"
+        "[Service]\n"
+        "Type=exec\n"
+        "ExecStart=\n"
+        "ExecStart=/usr/sbin/xrdp --nodaemon\n"
+        "PIDFile=\n"
+        "EOF"
+    )
+    sesman_override = (
+        "sudo mkdir -p /etc/systemd/system/xrdp-sesman.service.d && "
+        "sudo tee /etc/systemd/system/xrdp-sesman.service.d/override.conf > /dev/null << 'EOF'\n"
+        "[Unit]\n"
+        "BindsTo=\n"
+        "StopWhenUnneeded=false\n"
+        "[Service]\n"
+        "Type=exec\n"
+        "ExecStart=\n"
+        "ExecStart=/usr/sbin/xrdp-sesman --nodaemon\n"
+        "PIDFile=\n"
+        "EOF"
+    )
+    rc1, _ = run_cmd(xrdp_override)
+    rc2, _ = run_cmd(sesman_override)
+    if rc1 == 0 and rc2 == 0:
+        run_cmd("sudo systemctl daemon-reload")
+        headless_task("xrdp_systemd", "done")
+    else:
+        headless_task("xrdp_systemd", "failed")
+        headless_error("Failed to create systemd overrides")
+        exit_code = 1
+
+    # Enable and start xrdp service
+    headless_task("xrdp_service", "running")
+    headless_log("Enabling xrdp service...")
+    rc, out = run_cmd("sudo systemctl enable --now xrdp 2>&1")
+    headless_task("xrdp_service", "done" if rc == 0 else "failed")
+    if rc != 0:
+        headless_error(f"Failed to enable xrdp: {out}")
+        exit_code = 1
+
+    return exit_code
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="WSL Ubuntu Setup TUI (Linux)")
     parser.add_argument("--headless", action="store_true", help="Run without TUI (structured output)")
-    parser.add_argument("--step", choices=["enable-systemd", "install-packages"],
+    parser.add_argument("--step", choices=["enable-systemd", "install-packages", "configure-xrdp"],
                         help="Step to run (headless mode)")
     args = parser.parse_args()
 
@@ -229,6 +370,8 @@ def main() -> None:
                 sys.exit(headless_enable_systemd(config_data))
             elif args.step == "install-packages":
                 sys.exit(headless_install_packages(config_data))
+            elif args.step == "configure-xrdp":
+                sys.exit(headless_configure_xrdp(config_data))
             else:
                 print("ERROR:--step required with --headless", flush=True)
                 sys.exit(1)

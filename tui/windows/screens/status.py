@@ -1,4 +1,4 @@
-"""Windows TUI Welcome Screen — system info and config summary."""
+"""Windows TUI Status Screen — shows health check results and recommends setup."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from textual import work
 
 from ...shared.config import SetupConfig
 from ..tasks import validators
+from ..tasks.health_check import HealthStatus
 
 
 class DetailModal(ModalScreen):
@@ -66,35 +67,48 @@ class DetailModal(ModalScreen):
         self.dismiss()
 
 
-class WelcomeScreen(Screen):
-    """Welcome screen with system detection and config summary."""
+class StatusScreen(Screen):
+    """Status screen showing health check results, system info, and config summary."""
 
     CSS = """
-    #welcome-info {
+    #health-box {
         border: ascii $primary;
         padding: 1 2;
         margin: 1 2;
         height: auto;
     }
-    #welcome-config {
-        border: ascii $primary;
-        padding: 1 2;
-        margin: 1 2;
-        height: auto;
-    }
-    #welcome-info .info-row {
+    .health-row {
         height: 1;
         layout: horizontal;
     }
-    #welcome-info .info-row Label:first-child {
+    .health-row Label:first-child {
+        width: 36;
+    }
+    #system-info {
+        border: ascii $primary;
+        padding: 1 2;
+        margin: 1 2;
+        height: auto;
+    }
+    #system-info .info-row {
+        height: 1;
+        layout: horizontal;
+    }
+    #system-info .info-row Label:first-child {
         width: 24;
         text-style: bold;
     }
-    #welcome-config .config-row {
+    #config-box {
+        border: ascii $primary;
+        padding: 1 2;
+        margin: 1 2;
+        height: auto;
+    }
+    #config-box .config-row {
         height: 1;
         layout: horizontal;
     }
-    #welcome-config .config-row Label:first-child {
+    #config-box .config-row Label:first-child {
         width: 24;
         text-style: bold;
     }
@@ -113,16 +127,13 @@ class WelcomeScreen(Screen):
         padding: 0 2;
         text-style: bold;
     }
-    #btn-configure {
-        color: $text;
-    }
     #btn-start {
         color: $success;
     }
-    #btn-launch-files {
-        color: $accent;
+    #btn-configure {
+        color: $text;
     }
-    #btn-launch-terminal {
+    #btn-launcher {
         color: $accent;
     }
     #detecting-label {
@@ -134,18 +145,35 @@ class WelcomeScreen(Screen):
     }
     """
 
-    def __init__(self, config: SetupConfig, **kwargs) -> None:
+    def __init__(self, config: SetupConfig, health: HealthStatus, **kwargs) -> None:
         super().__init__(**kwargs)
         self._config = config
-        self._fail_details: dict[str, tuple[str, str]] = {}  # button_id -> (title, detail)
+        self._health = health
+        self._fail_details: dict[str, tuple[str, str]] = {}
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
-            with Vertical(id="welcome-info"):
+            # Health check summary
+            with Vertical(id="health-box"):
+                yield Static("Setup Status", classes="section-header")
+                for label, passed in self._health.summary_lines:
+                    row = Horizontal(classes="health-row")
+                    row.compose_add_child(Label(label))
+                    status = "[green]OK[/]" if passed else "[red]Missing[/]"
+                    row.compose_add_child(Label(status))
+                    yield row
+                if self._health.ready:
+                    yield Static("[green]Ubuntu is ready to use.[/]")
+                else:
+                    yield Static("[yellow]Setup is needed to complete the Ubuntu environment.[/]")
+
+            # System info (populated async)
+            with Vertical(id="system-info"):
                 yield Static("System Information", classes="section-header")
                 yield Label("Detecting system info...", id="detecting-label")
 
-            with Vertical(id="welcome-config"):
+            # Config summary
+            with Vertical(id="config-box"):
                 yield Static("Current Configuration", classes="section-header")
                 c = self._config
                 wc = c.wslconfig
@@ -161,11 +189,10 @@ class WelcomeScreen(Screen):
                 yield _config_row("Apt Packages:", ", ".join(c.aptPackages))
 
             with Vertical(classes="button-bar"):
+                if self._health.ready:
+                    yield Static(">> Go to Launcher <<", id="btn-launcher", classes="action-link")
+                yield Static(">> Run Setup <<", id="btn-start", classes="action-link")
                 yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
-                yield Static(">> Start Setup <<", id="btn-start", classes="action-link")
-                yield Static(">> Launch File Manager <<", id="btn-launch-files", classes="action-link")
-                yield Static(">> Launch PyCharm <<", id="btn-launch-pycharm", classes="action-link")
-                yield Static(">> Open Ubuntu Terminal <<", id="btn-launch-terminal", classes="action-link")
                 yield Static(">> Quit (Escape) <<", id="btn-quit", classes="action-link")
 
     def on_mount(self) -> None:
@@ -173,17 +200,15 @@ class WelcomeScreen(Screen):
 
     @work(exclusive=True)
     async def detect_system_info(self) -> None:
-        info_box = self.query_one("#welcome-info")
+        info_box = self.query_one("#system-info")
         detecting = self.query_one("#detecting-label")
 
-        # Run all checks
         build = await validators.check_windows_build()
         virt = await validators.check_virtualization()
         ram = await validators.check_ram()
         cpus = await validators.check_cpu_count()
         drive = await validators.check_drive_exists(self._config.wslDriveLetter)
 
-        # Replace the detecting label with results
         detecting.remove()
 
         checks = [
@@ -220,28 +245,19 @@ class WelcomeScreen(Screen):
                     await row.mount(Label(f"{result.message}  [red]FAIL[/]"))
 
     def on_click(self, event) -> None:
-        """Handle clicks on action links and detail links."""
-        from ...shared.launcher import WSL_APP_BUTTONS, launch_windows_terminal, launch_wsl_app
-
         widget = event.widget
         widget_id = getattr(widget, "id", None)
         if not widget_id:
             return
-        if widget_id == "btn-configure":
+        if widget_id == "btn-start":
+            from .setup import SetupScreen
+            self.app.switch_screen(SetupScreen(self._config))
+        elif widget_id == "btn-configure":
             from .config_editor import ConfigEditorScreen
             self.app.push_screen(ConfigEditorScreen(self._config))
-        elif widget_id == "btn-start":
-            from .setup import SetupScreen
-            self.app.push_screen(SetupScreen(self._config))
-        elif widget_id in WSL_APP_BUTTONS:
-            cmd, display_name = WSL_APP_BUTTONS[widget_id]
-            try:
-                launch_wsl_app(self._config.distroImportName, cmd)
-                self.app.notify(f"Launched: {display_name}")
-            except Exception as e:
-                self.app.notify(f"Failed to launch: {e}", severity="error")
-        elif widget_id == "btn-launch-terminal":
-            launch_windows_terminal()
+        elif widget_id == "btn-launcher":
+            from .launcher import LauncherScreen
+            self.app.switch_screen(LauncherScreen(self._config))
         elif widget_id == "btn-quit":
             self.app.exit()
         elif widget_id in self._fail_details:

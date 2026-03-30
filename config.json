@@ -27,7 +27,11 @@
     ],
     "aptPackages": [
         "nautilus",
-        "x11-apps"
+        "x11-apps",
+        "xfce4",
+        "xrdp",
+        "dbus-x11"
     ],
-    "enableSystemd": true
+    "enableSystemd": true,
+    "xrdpPort": 3390
 }

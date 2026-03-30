@@ -41,6 +41,7 @@ SETUP_TASKS = [
     ("linux_systemd", "Linux setup: enable systemd"),
     ("restart_wsl", "Restart WSL"),
     ("linux_packages", "Linux setup: install packages"),
+    ("linux_xrdp", "Linux setup: install and configure xrdp"),
 ]
 
 RESUME_AFTER_REBOOT = "update_wsl"
@@ -74,6 +75,9 @@ class SetupScreen(Screen):
     #btn-reboot {
         color: $warning;
     }
+    #btn-launcher {
+        color: $accent;
+    }
     """
 
     def __init__(self, config: SetupConfig, resume_from: str = "", **kwargs) -> None:
@@ -90,6 +94,7 @@ class SetupScreen(Screen):
             with Horizontal(classes="button-bar"):
                 yield Static(">> Reboot Now <<", id="btn-reboot", classes="action-link hidden")
                 yield Static(">> Run Verification <<", id="btn-verify", classes="action-link hidden")
+                yield Static(">> Go to Launcher <<", id="btn-launcher", classes="action-link hidden")
 
     def on_mount(self) -> None:
         self.run_setup()
@@ -371,17 +376,31 @@ class SetupScreen(Screen):
             if not lp2.success:
                 log.write_error("Linux install-packages failed")
                 status.update("[yellow]Linux package installation had issues. Run verification to check.[/]")
+
+        # Linux: configure xrdp
+        if start_index <= task_ids.index("linux_xrdp"):
+            log.write_command("Running Linux setup: configure xrdp...")
+            tasks.set_status("linux_xrdp", "running")
+            lp3 = await run_linux_headless(config, "configure-xrdp", script_dir, on_line, on_task_update)
+            tasks.set_status("linux_xrdp", "done" if lp3.success else "failed")
+            if not lp3.success:
+                log.write_error("Linux configure-xrdp failed")
+                status.update("[yellow]xrdp configuration had issues. Run verification to check.[/]")
             else:
+                # Set up port proxy so 127.0.0.1:<port> reaches xrdp in WSL
+                from ...shared.launcher import ensure_portproxy
+                ensure_portproxy(config.xrdpPort, config.distroImportName)
                 log.write_success("All tasks complete!")
                 status.update("[green]Setup complete! Run verification to confirm.[/]")
 
-        flog.info("=== Setup finished (install-packages success=%s) ===", lp2.success if lp2 else "N/A")
+        flog.info("=== Setup finished ===")
 
         # Clear reboot state
         clear_state()
 
-        # Show verify button
+        # Show verify and launcher buttons
         self.query_one("#btn-verify").remove_class("hidden")
+        self.query_one("#btn-launcher").remove_class("hidden")
 
     def on_click(self, event) -> None:
         widget = event.widget
@@ -395,3 +414,6 @@ class SetupScreen(Screen):
         elif widget_id == "btn-verify":
             from .verify import VerifyScreen
             self.app.switch_screen(VerifyScreen(self._config))
+        elif widget_id == "btn-launcher":
+            from .launcher import LauncherScreen
+            self.app.switch_screen(LauncherScreen(self._config))

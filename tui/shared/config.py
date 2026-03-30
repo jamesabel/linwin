@@ -38,6 +38,7 @@ class SetupConfig:
     ])
     aptPackages: list[str] = field(default_factory=lambda: ["nautilus", "x11-apps"])
     enableSystemd: bool = True
+    xrdpPort: int = 3390
 
     @staticmethod
     def from_dict(data: dict) -> SetupConfig:
@@ -52,6 +53,7 @@ class SetupConfig:
             snaps=snaps,
             aptPackages=data.get("aptPackages", ["nautilus", "x11-apps"]),
             enableSystemd=data.get("enableSystemd", True),
+            xrdpPort=data.get("xrdpPort", 3390),
         )
 
     def to_dict(self) -> dict:
