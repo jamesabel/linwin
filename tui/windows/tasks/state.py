@@ -14,7 +14,7 @@ def _state_dir() -> Path:
     local_app_data = os.environ.get("LOCALAPPDATA", "")
     if not local_app_data:
         local_app_data = os.path.join(os.environ.get("USERPROFILE", "."), "AppData", "Local")
-    return Path(local_app_data) / "wslubuntugnome"
+    return Path(local_app_data) / "linwin"
 
 
 def _state_file() -> Path:
