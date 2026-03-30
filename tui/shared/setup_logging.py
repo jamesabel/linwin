@@ -1,8 +1,8 @@
 """File logging for the WSL Ubuntu setup tool.
 
 Writes a rotating log file to:
-  Windows: %LOCALAPPDATA%\\wslubuntugnome\\logs\\setup.log
-  Linux:   ~/.local/share/wslubuntugnome/logs/setup.log
+  Windows: %LOCALAPPDATA%\\linwin\\logs\\setup.log
+  Linux:   ~/.local/share/linwin/logs/setup.log
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ def get_log_dir() -> Path:
             local_app_data = os.path.join(
                 os.environ.get("USERPROFILE", "."), "AppData", "Local"
             )
-        return Path(local_app_data) / "wslubuntugnome" / "logs"
+        return Path(local_app_data) / "linwin" / "logs"
     else:
         xdg = os.environ.get("XDG_DATA_HOME", "")
         if not xdg:
             xdg = os.path.join(os.path.expanduser("~"), ".local", "share")
-        return Path(xdg) / "wslubuntugnome" / "logs"
+        return Path(xdg) / "linwin" / "logs"
 
 
 def setup_logging() -> logging.Logger:
