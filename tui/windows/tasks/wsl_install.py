@@ -162,14 +162,43 @@ async def wait_for_wsl_ready(
 ) -> bool:
     """Wait until the WSL distro is responsive after a restart.
 
-    Probes with a simple 'echo ready' command every 2 seconds.
+    Probes with a simple 'echo ready' command every 2 seconds,
+    then verifies systemd services (including xrdp if installed)
+    have settled before returning.
     Returns True when WSL responds, False if all attempts exhausted.
     """
     import asyncio
 
+    # Phase 1: wait for basic shell responsiveness
     for attempt in range(max_attempts):
         result = await run_wsl(config.distroImportName, "echo ready", on_line=on_line)
         if result.success and "ready" in result.output:
-            return True
+            break
+        await asyncio.sleep(2)
+    else:
+        return False
+
+    # Phase 2: wait for systemd to finish booting and xrdp to stabilise
+    for attempt in range(max_attempts):
+        result = await run_wsl(
+            config.distroImportName,
+            "systemctl is-system-running 2>/dev/null; "
+            "systemctl is-active xrdp 2>/dev/null; "
+            "systemctl is-active xrdp-sesman 2>/dev/null",
+            on_line=on_line,
+        )
+        lines = [l.strip() for l in result.stdout_lines if l.strip()]
+        system_state = lines[0] if lines else ""
+        xrdp_active = lines[1] if len(lines) > 1 else ""
+        sesman_active = lines[2] if len(lines) > 2 else ""
+
+        # System must be running/degraded (not "starting")
+        if system_state in ("running", "degraded"):
+            # If xrdp is not installed, we're done
+            if xrdp_active in ("inactive", "not-found", ""):
+                return True
+            # If xrdp is installed, both services must be active
+            if xrdp_active == "active" and sesman_active == "active":
+                return True
         await asyncio.sleep(2)
     return False
