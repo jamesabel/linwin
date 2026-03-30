@@ -14,4 +14,4 @@ dev = [
 ]
 
 [project.scripts]
-setup-tui = "tui.windows.__main__:main"
+setup-tui = "linwin.windows.__main__:main"

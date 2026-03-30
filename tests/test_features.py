@@ -1,6 +1,6 @@
 """Tests for the features module data structures."""
 
-from tui.windows.tasks.features import FeatureResult
+from linwin.windows.tasks.features import FeatureResult
 
 
 class TestFeatureResult:

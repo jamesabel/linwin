@@ -1,6 +1,6 @@
 """Tests for the validators module data structures and parsing logic."""
 
-from tui.shared.task_result import TaskResult
+from linwin.shared.task_result import TaskResult
 
 
 class TestTaskResult:

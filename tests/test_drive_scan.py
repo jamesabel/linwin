@@ -2,7 +2,7 @@
 
 import pytest
 
-from tui.windows.tasks.drive_scan import (
+from linwin.windows.tasks.drive_scan import (
     DriveCandidate,
     DriveScanResult,
     parse_drive_line,

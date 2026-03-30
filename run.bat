@@ -9,4 +9,4 @@ cd /d "%~dp0"
 
 :: Launch the TUI
 set PYTHONIOENCODING=utf-8
-uv run python -m tui.windows
+uv run python -m linwin.windows

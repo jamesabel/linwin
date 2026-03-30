@@ -2,9 +2,9 @@
 """Linux-side TUI entry point for WSL Ubuntu setup.
 
 Usage:
-    python3 -m tui.linux                                       # Interactive TUI
-    python3 -m tui.linux --headless --step enable-systemd      # Headless: enable systemd
-    python3 -m tui.linux --headless --step install-packages    # Headless: install packages
+    python3 -m linwin.linux                                       # Interactive TUI
+    python3 -m linwin.linux --headless --step enable-systemd      # Headless: enable systemd
+    python3 -m linwin.linux --headless --step install-packages    # Headless: install packages
 """
 
 import argparse

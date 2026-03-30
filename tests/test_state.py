@@ -6,13 +6,13 @@ from unittest.mock import patch
 
 import pytest
 
-from tui.windows.tasks.state import SetupState, clear_state, load_state, save_state
+from linwin.windows.tasks.state import SetupState, clear_state, load_state, save_state
 
 
 @pytest.fixture
 def state_dir(tmp_path):
     """Redirect state storage to a temp directory."""
-    with patch("tui.windows.tasks.state._state_dir", return_value=tmp_path):
+    with patch("linwin.windows.tasks.state._state_dir", return_value=tmp_path):
         yield tmp_path
 
 
@@ -45,7 +45,7 @@ class TestSaveAndLoadState:
 
     def test_save_creates_directory(self, tmp_path):
         nested = tmp_path / "sub" / "dir"
-        with patch("tui.windows.tasks.state._state_dir", return_value=nested):
+        with patch("linwin.windows.tasks.state._state_dir", return_value=nested):
             save_state(SetupState(resume_from_task="linux_packages"))
             loaded = load_state()
             assert loaded is not None

@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from tui.shared.config import load_config
-from tui.shared.subprocess_runner import run_wsl
+from linwin.shared.config import load_config
+from linwin.shared.subprocess_runner import run_wsl
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
