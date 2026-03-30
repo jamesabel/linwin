@@ -326,7 +326,14 @@ class SetupScreen(Screen):
         if start_index <= task_ids.index("shutdown_wsl"):
             log.write_command("wsl --shutdown")
             await run_task("shutdown_wsl", wsl_install.shutdown_wsl(on_line))
-            await asyncio.sleep(3)
+
+            # Wait for WSL to be fully ready before running Linux steps
+            log.write_info("Waiting for WSL to become ready...")
+            flog.info("Probing WSL readiness after shutdown...")
+            ready = await wsl_install.wait_for_wsl_ready(config, on_line)
+            if not ready:
+                flog.warning("WSL readiness probe timed out, proceeding anyway")
+                log.write_info("WSL slow to respond, proceeding...")
 
         # Compute script dir for Linux invocation
         script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
