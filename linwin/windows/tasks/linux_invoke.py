@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable
 
 from ...shared.config import SetupConfig
 from ...shared.subprocess_runner import LineCallback, SubprocessResult, run_wsl
@@ -14,8 +14,8 @@ async def run_linux_headless(
     config: SetupConfig,
     step: str,
     script_dir_win: str,
-    on_line: Optional[LineCallback] = None,
-    on_task_update: Optional[TaskUpdateCallback] = None,
+    on_line: LineCallback | None = None,
+    on_task_update: TaskUpdateCallback | None = None,
 ) -> SubprocessResult:
     """
     Invoke python3 -m linwin.linux --headless --step <step> inside WSL.

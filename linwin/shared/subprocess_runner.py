@@ -6,7 +6,7 @@ import asyncio
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Optional, Awaitable
+from typing import Callable, Awaitable
 
 from .setup_logging import get_logger
 
@@ -30,9 +30,9 @@ class SubprocessResult:
 
 async def run_command(
     args: list[str],
-    on_line: Optional[LineCallback] = None,
-    cwd: Optional[str] = None,
-    timeout: Optional[float] = None,
+    on_line: LineCallback | None = None,
+    cwd: str | None = None,
+    timeout: float | None = None,
 ) -> SubprocessResult:
     """Run a command asynchronously, streaming output line by line."""
     log = get_logger()
@@ -109,7 +109,7 @@ async def run_command(
 
 async def run_powershell(
     command: str,
-    on_line: Optional[LineCallback] = None,
+    on_line: LineCallback | None = None,
 ) -> SubprocessResult:
     """Run a PowerShell command (Windows only)."""
     return await run_command(
@@ -121,8 +121,8 @@ async def run_powershell(
 async def run_wsl(
     distro: str,
     command: str,
-    on_line: Optional[LineCallback] = None,
-    cwd: Optional[str] = None,
+    on_line: LineCallback | None = None,
+    cwd: str | None = None,
 ) -> SubprocessResult:
     """Run a bash command inside a WSL distro.
 
@@ -140,8 +140,8 @@ async def run_wsl(
 
 async def run_wsl_exec(
     args: list[str],
-    on_line: Optional[LineCallback] = None,
-    timeout: Optional[float] = None,
+    on_line: LineCallback | None = None,
+    timeout: float | None = None,
 ) -> SubprocessResult:
     """Run a wsl.exe command directly (e.g., wsl --update)."""
     return await run_command(
@@ -153,8 +153,8 @@ async def run_wsl_exec(
 
 async def run_local(
     command: str,
-    on_line: Optional[LineCallback] = None,
-    timeout: Optional[float] = None,
+    on_line: LineCallback | None = None,
+    timeout: float | None = None,
 ) -> SubprocessResult:
     """Run a local shell command (bash on Linux, cmd on Windows)."""
     if sys.platform == "win32":

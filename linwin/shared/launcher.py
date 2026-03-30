@@ -49,8 +49,9 @@ def _get_wsl_ip(distro: str = "Ubuntu") -> str:
         ip = result.stdout.strip().split()[0]
         if ip:
             return ip
-    except Exception:
-        pass
+    except Exception as exc:
+        import logging
+        logging.getLogger("wslsetup").debug("_get_wsl_ip failed: %s", exc)
     return ""
 
 

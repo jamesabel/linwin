@@ -8,59 +8,23 @@ Validates the complete RDP stack end-to-end:
 
 from __future__ import annotations
 
-import asyncio
 import socket
 import struct
-from pathlib import Path
 
 import pytest
 
-from linwin.shared.config import load_config
 from linwin.shared.subprocess_runner import run_wsl
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
+from conftest import _run, _recv_exact, _cert_flag
 
 # Temporary Linux user created for the RDP auth tests, cleaned up after.
 TEST_USER = "_rdptest"
 TEST_PASS = "WslRdpTest2024x"
 
 
-def _run(coro):
-    """Run an async coroutine synchronously."""
-    return asyncio.run(coro)
-
-
-def _recv_exact(sock: socket.socket, n: int) -> bytes:
-    """Receive exactly *n* bytes from *sock*, or raise on early close."""
-    buf = b""
-    while len(buf) < n:
-        chunk = sock.recv(n - len(buf))
-        if not chunk:
-            raise ConnectionError(
-                f"Connection closed after {len(buf)}/{n} bytes"
-            )
-        buf += chunk
-    return buf
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="module")
-def config():
-    return load_config(CONFIG_PATH)
-
-
-@pytest.fixture(scope="module")
-def distro(config):
-    return config.distroImportName
-
-
-@pytest.fixture(scope="module")
-def xrdp_port(config):
-    return config.xrdpPort
-
 
 @pytest.fixture(scope="module")
 def wsl_ip(distro):
@@ -90,19 +54,6 @@ def rdp_test_user(distro):
         pytest.skip(f"Could not set test user password: {r.output}")
     yield TEST_USER
     _run(run_wsl(distro, f"sudo userdel -r {TEST_USER} 2>/dev/null"))
-
-
-@pytest.fixture(scope="module")
-def xfreerdp_bin(distro):
-    """Return the xfreerdp binary name, installing it if necessary."""
-    for binary in ("xfreerdp3", "xfreerdp"):
-        r = _run(run_wsl(distro, f"which {binary} 2>/dev/null"))
-        if r.success and r.output.strip():
-            return binary
-    r = _run(run_wsl(distro, "sudo apt-get install -y freerdp2-x11 2>&1"))
-    if r.success:
-        return "xfreerdp"
-    pytest.skip("xfreerdp not available and could not be installed")
 
 
 # ---------------------------------------------------------------------------
@@ -330,14 +281,9 @@ class TestRdpProtocolHandshake:
 class TestRdpFullLogin:
     """Authenticate to xrdp with real credentials via xfreerdp."""
 
-    @staticmethod
-    def _cert_flag(binary: str) -> str:
-        """Return the correct cert-ignore flag for the freerdp version."""
-        return "/cert:ignore" if binary == "xfreerdp3" else "/cert-ignore"
-
     def test_auth_succeeds(self, distro, xrdp_port, rdp_test_user, xfreerdp_bin):
         """Valid credentials are accepted by xrdp."""
-        cert = self._cert_flag(xfreerdp_bin)
+        cert = _cert_flag(xfreerdp_bin)
         cmd = (
             f"{xfreerdp_bin} /v:localhost:{xrdp_port} "
             f"/u:{TEST_USER} /p:{TEST_PASS} "
@@ -350,7 +296,7 @@ class TestRdpFullLogin:
 
     def test_auth_output_confirms_success(self, distro, xrdp_port, rdp_test_user, xfreerdp_bin):
         """xfreerdp output explicitly reports 'exit status 0' for valid login."""
-        cert = self._cert_flag(xfreerdp_bin)
+        cert = _cert_flag(xfreerdp_bin)
         cmd = (
             f"{xfreerdp_bin} /v:localhost:{xrdp_port} "
             f"/u:{TEST_USER} /p:{TEST_PASS} "

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
@@ -11,7 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Static
 from textual import work
 
-from ...shared.config import SetupConfig, windows_to_wsl_path
+from ...shared.config import SetupConfig
 from ...shared.setup_logging import get_logger
 from ...shared.widgets import LogPanel, TaskListWidget
 from ..tasks import features, validators, wsl_install
@@ -55,19 +56,6 @@ class SetupScreen(Screen):
         padding: 1 2;
         text-style: bold;
         color: $text;
-    }
-    .button-bar {
-        height: auto;
-        padding: 1 2;
-        align-horizontal: center;
-    }
-    .action-link {
-        margin: 0 2;
-        padding: 0 2;
-        text-style: bold;
-    }
-    .hidden {
-        display: none;
     }
     #btn-verify {
         color: $success;
@@ -119,11 +107,7 @@ class SetupScreen(Screen):
         else:
             start_index = 0
 
-        async def on_line(line: str, stream: str) -> None:
-            if stream == "stderr":
-                log.write_stderr(line)
-            else:
-                log.write_stdout(line)
+        on_line = log.as_line_callback
 
         # Helper for simple task execution
         async def run_task(task_id: str, coro, fail_msg: str = "") -> bool:
@@ -314,13 +298,11 @@ class SetupScreen(Screen):
             log.write_command("Writing .wslconfig...")
             tasks.set_status("write_config", "running")
             wc_result = write_wslconfig(config, overwrite=True)
+            tasks.set_status("write_config", "done" if wc_result.ok else "failed")
             if wc_result.ok:
-                tasks.set_status("write_config", "done")
                 log.write_success(wc_result.message)
             else:
-                log.write_info("Overwriting existing .wslconfig...")
-                wc_result = write_wslconfig(config, overwrite=True)
-                tasks.set_status("write_config", "done" if wc_result.ok else "failed")
+                log.write_error(wc_result.message)
 
         # Shutdown WSL
         if start_index <= task_ids.index("shutdown_wsl"):
@@ -336,7 +318,7 @@ class SetupScreen(Screen):
                 log.write_info("WSL slow to respond, proceeding...")
 
         # Compute script dir for Linux invocation
-        script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        script_dir = str(Path(__file__).resolve().parents[3])
 
         async def on_task_update(task_id: str, task_status: str) -> None:
             log.write_info(f"  [{task_id}] {task_status}")

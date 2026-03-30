@@ -37,19 +37,6 @@ class SetupScreen(Screen):
         padding: 1 2;
         text-style: bold;
     }
-    .button-bar {
-        height: auto;
-        padding: 1 2;
-        align-horizontal: center;
-    }
-    .action-link {
-        margin: 0 2;
-        padding: 0 2;
-        text-style: bold;
-    }
-    .hidden {
-        display: none;
-    }
     #btn-verify {
         color: $success;
     }
@@ -78,11 +65,7 @@ class SetupScreen(Screen):
         status = self.query_one("#setup-status", Static)
         config = self._config
 
-        async def on_line(line: str, stream: str) -> None:
-            if stream == "stderr":
-                log.write_stderr(line)
-            else:
-                log.write_stdout(line)
+        on_line = log.as_line_callback
 
         # 1. Enable systemd
         if config.enableSystemd:
