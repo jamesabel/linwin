@@ -29,6 +29,7 @@
         "nautilus",
         "x11-apps",
         "xfce4",
+        "xfce4-terminal",
         "xrdp",
         "dbus-x11"
     ],

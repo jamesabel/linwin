@@ -10,6 +10,7 @@ from textual import work
 
 from ...shared.config import SetupConfig
 from ...shared.launcher import WSL_APP_BUTTONS, launch_rdp, launch_windows_terminal, launch_wsl_app
+from ...shared.subprocess_runner import run_wsl
 
 
 class LauncherScreen(Screen):
@@ -122,8 +123,7 @@ class LauncherScreen(Screen):
         elif widget_id == "btn-launch-terminal":
             launch_windows_terminal()
         elif widget_id == "btn-rdp":
-            launch_rdp(self._config.xrdpPort, self._config.distroImportName)
-            self.app.notify("Launched: Remote Desktop")
+            self._launch_rdp()
         elif widget_id == "btn-verify":
             from .verify import VerifyScreen
             self.app.push_screen(VerifyScreen(self._config))
@@ -137,6 +137,22 @@ class LauncherScreen(Screen):
             self._go_to_status()
         elif widget_id == "btn-exit":
             self.app.exit()
+
+    @work
+    async def _launch_rdp(self) -> None:
+        """Check that xrdp-sesman is active before launching the RDP client."""
+        result = await run_wsl(
+            self._config.distroImportName,
+            "systemctl is-active xrdp 2>/dev/null && systemctl is-active xrdp-sesman 2>/dev/null",
+        )
+        if not result.success or "active" not in result.output:
+            self.app.notify(
+                "xrdp is not ready yet — wait a moment and try again",
+                severity="warning",
+            )
+            return
+        launch_rdp(self._config.xrdpPort, self._config.distroImportName)
+        self.app.notify("Launched: Remote Desktop")
 
     @work
     async def _go_to_status(self) -> None:

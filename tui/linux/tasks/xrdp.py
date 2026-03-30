@@ -15,7 +15,7 @@ async def is_xrdp_installed(on_line: LineCallback | None = None) -> bool:
     return result.output.strip() == "yes"
 
 
-XRDP_PACKAGES = "xrdp dbus-x11 xfce4"
+XRDP_PACKAGES = "xrdp dbus-x11 xfce4 xfce4-terminal"
 
 
 async def install_xrdp(on_line: LineCallback | None = None) -> TaskResult:
