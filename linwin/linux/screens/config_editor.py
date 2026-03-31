@@ -7,7 +7,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Input, Static
 
 from ...shared.base_app import ClickDispatchScreen
-from ...shared.config import AVAILABLE_SNAPS, SetupConfig, collect_snap_selections, parse_apt_input, save_config
+from ...shared.config import APP_REGISTRY, SetupConfig, collect_app_selections, parse_apt_input, save_config
 from ...shared.widgets import AsciiCheckbox, field_row
 
 
@@ -44,10 +44,17 @@ class ConfigEditorScreen(ClickDispatchScreen):
         c = self._config
         with VerticalScroll():
             with Vertical(classes="editor-section"):
-                yield Static("IDE Selection (Snaps)", classes="section-header")
-                selected = {s.name for s in c.snaps}
-                for snap_id, snap_label in AVAILABLE_SNAPS:
-                    yield AsciiCheckbox(snap_label, value=snap_id in selected, id=f"snap-{snap_id}")
+                yield Static("Optional Applications", classes="section-header")
+                selected_ids = {a.id for a in c.optionalApps}
+                for app in APP_REGISTRY:
+                    suffix = f" ({app.install_method})" if app.install_method != "snap" else ""
+                    if app.install_method == "custom":
+                        suffix = " (custom — install separately)"
+                    yield AsciiCheckbox(
+                        f"{app.display_name}{suffix}",
+                        value=app.id in selected_ids,
+                        id=f"app-{app.id}",
+                    )
 
             with Vertical(classes="editor-section"):
                 yield Static("Apt Packages", classes="section-header")
@@ -71,7 +78,9 @@ class ConfigEditorScreen(ClickDispatchScreen):
     def _save_config(self) -> None:
         c = self._config
 
-        c.snaps = collect_snap_selections(self.query_one)
+        from ...shared.config import SnapPackage
+        c.optionalApps = collect_app_selections(self.query_one)
+        c.snaps = [SnapPackage(a.id, a.classic) for a in c.optionalApps if a.install_method == "snap"]
         c.aptPackages = parse_apt_input(self.query_one("#input-apt-packages", Input).value)
 
         # Systemd

@@ -3,10 +3,14 @@
 Each check function takes a ``runner`` — an async callable with the same
 signature as ``run_local`` — so the same logic works over ``run_wsl``
 (Windows side) or ``run_local`` (Linux side).
+
+WSL commands can transiently fail (exit=1, no stdout) due to VM startup
+timing.  Functions that hit this use a single retry to avoid false failures.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Awaitable, Callable
 
@@ -16,31 +20,46 @@ from .subprocess_runner import SubprocessResult
 Runner = Callable[..., Awaitable[SubprocessResult]]
 
 
+async def _run_with_retry(runner: Runner, command: str) -> SubprocessResult:
+    """Run a command, retrying once if it returns exit!=0 with no output.
+
+    This handles transient WSL failures where the VM isn't fully ready
+    and the command exits immediately with no stdout.
+    """
+    result = await runner(command)
+    if not result.success and not result.output.strip():
+        await asyncio.sleep(0.5)
+        result = await runner(command)
+    return result
+
+
 async def check_systemd(runner: Runner) -> tuple[bool, str]:
     """Check if systemd is PID 1. Returns (passed, detail)."""
-    result = await runner("ps -p 1 -o comm= 2>/dev/null")
+    result = await _run_with_retry(runner, "ps -p 1 -o comm= 2>/dev/null")
     output = result.output.strip()
     return output == "systemd", output
 
 
 async def check_snapd(runner: Runner) -> bool:
     """Check if the snapd service is running."""
-    result = await runner("systemctl is-active snapd 2>/dev/null")
+    result = await _run_with_retry(runner, "systemctl is-active snapd 2>/dev/null")
     return result.output.strip() == "active"
 
 
 async def check_apt_package(runner: Runner, package: str) -> bool:
     """Check if an apt package is installed."""
-    result = await runner(
-        f"dpkg -l {package} 2>/dev/null | grep -q '^ii' && echo yes || echo no"
+    result = await _run_with_retry(
+        runner,
+        f"dpkg -l {package} 2>/dev/null | grep -q '^ii' && echo yes || echo no",
     )
     return result.output.strip() == "yes"
 
 
 async def check_snap_package(runner: Runner, name: str) -> bool:
     """Check if a snap package is installed."""
-    result = await runner(
-        f"snap list {name} 2>/dev/null && echo yes || echo no"
+    result = await _run_with_retry(
+        runner,
+        f"snap list {name} 2>/dev/null && echo yes || echo no",
     )
     return "yes" in result.output
 

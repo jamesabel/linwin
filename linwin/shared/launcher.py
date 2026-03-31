@@ -6,24 +6,17 @@ import subprocess
 import sys
 
 
-# Mapping of button IDs to (command, display_name).
-# Screens use this to resolve btn-launch-* clicks.
-WSL_APP_BUTTONS: dict[str, tuple[str, str]] = {
-    "btn-launch-files": ("nautilus", "File Manager"),
-    "btn-launch-pycharm": ("pycharm-community", "PyCharm"),
-}
+def notify_launch(app, command: str, display_name: str, distro: str) -> None:
+    """Launch a WSL app by command and notify the user.
 
-
-def notify_launch(app, button_id: str, distro: str) -> None:
-    """Launch a WSL app by button ID and notify the user.
-
-    Shared helper used by any screen that has app-launch buttons.
-    Looks up the command in ``WSL_APP_BUTTONS``, launches it, and
-    posts a success or error notification.
+    Args:
+        app: The Textual App instance (for notifications).
+        command: Shell command to run inside WSL (e.g. "nautilus").
+        display_name: Human-readable name for the notification.
+        distro: WSL distro name.
     """
-    cmd, display_name = WSL_APP_BUTTONS[button_id]
     try:
-        launch_wsl_app(distro, cmd)
+        launch_wsl_app(distro, command)
         app.notify(f"Launched: {display_name}")
     except Exception as e:
         app.notify(f"Failed to launch: {e}", severity="error")

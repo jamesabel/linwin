@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from textual.widgets import OptionList
+
 from linwin.shared.config import SetupConfig
 from linwin.shared.subprocess_runner import SubprocessResult
 
@@ -165,7 +167,7 @@ class TestLauncherScreen:
             # Verify screen composed
             assert app.screen is screen
 
-    async def test_click_dispatch(self):
+    async def test_option_lists_present(self):
         from linwin.shared.base_app import BaseSetupApp
         from linwin.windows.screens.launcher import LauncherScreen
 
@@ -176,9 +178,9 @@ class TestLauncherScreen:
             screen = LauncherScreen(config)
             app.push_screen(screen)
             await pilot.pause()
-            # Test that CLICK_MAP is populated
-            assert "btn-launch-files" in screen.CLICK_MAP
-            assert "btn-exit" in screen.CLICK_MAP
+            # Verify both OptionLists are rendered
+            assert screen.query_one("#launch-list", OptionList)
+            assert screen.query_one("#maint-list", OptionList)
 
 
 # ── Windows Verify Screen ────────────────────────────────────────────

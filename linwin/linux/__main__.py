@@ -93,14 +93,20 @@ def headless_install_packages(config: dict) -> int:
             emit_error(result.message)
             exit_code = 1
 
-        # Install snaps
-        for snap_info in config.get("snaps", []):
-            snap = SnapPackage(
-                name=snap_info["name"],
-                classic=snap_info.get("classic", True),
-            )
-            if not _run_task(f"snap_{snap.name}", snaps.install_snap(snap)):
-                exit_code = 1
+        # Install optional apps (snap and apt; custom skipped)
+        for app_info in config.get("optionalApps", config.get("snaps", [])):
+            method = app_info.get("install_method", "snap")
+            app_id = app_info.get("id", app_info.get("name", ""))
+            if method == "snap":
+                snap = SnapPackage(
+                    name=app_id,
+                    classic=app_info.get("classic", True),
+                )
+                if not _run_task(f"snap_{snap.name}", snaps.install_snap(snap)):
+                    exit_code = 1
+            elif method == "apt":
+                if not _run_task(f"apt_opt_{app_id}", apt.install_apt_package(app_id)):
+                    exit_code = 1
 
     # Verify WSLg
     emit_task("verify_wslg", "running")

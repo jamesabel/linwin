@@ -2,43 +2,48 @@
 
 from __future__ import annotations
 
+import string
+
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
-from textual.widgets import Static
+from textual.widgets import OptionList, Static
 from textual import work
 
 from ...shared.base_app import ClickDispatchScreen
-from ...shared.config import SetupConfig
+from ...shared.config import AppEntry, SetupConfig
 from ...shared.launcher import launch_rdp, launch_windows_terminal, notify_launch
 from ...shared.subprocess_runner import run_wsl
+from ..tasks.state import load_launcher_selection, save_launcher_selection
+
+
+# Standard apps: always present. (action_name, label)
+_STANDARD_APPS = [
+    ("launch_files",    "Launch File Manager"),
+    ("launch_terminal", "Open Ubuntu Terminal"),
+    ("launch_rdp",      "RDP into Ubuntu (XFCE4 Desktop)"),
+]
+
+# Maintenance items: always present.
+_MAINTENANCE = [
+    ("run_verify",  "Run Verification"),
+    ("run_setup",   "Re-run Setup"),
+    ("configure",   "Configure Settings"),
+    ("view_status", "View Status"),
+    ("quit",        "Exit"),
+]
+
+
+def _app_action_name(app: AppEntry) -> str:
+    """Derive a Textual action name from an AppEntry id."""
+    return f"launch_app_{app.id.replace('-', '_')}"
 
 
 class LauncherScreen(ClickDispatchScreen):
-    """Primary hub shown when Ubuntu is set up. Launch apps or run maintenance."""
+    """Primary hub shown when Ubuntu is set up. Launch apps or run maintenance.
 
-    BINDINGS = [
-        ("1", "launch_files", "File Manager"),
-        ("2", "launch_pycharm", "PyCharm"),
-        ("3", "launch_terminal", "Terminal"),
-        ("4", "launch_rdp", "RDP"),
-        ("5", "run_verify", "Verify"),
-        ("6", "run_setup", "Setup"),
-        ("7", "configure", "Configure"),
-        ("8", "view_status", "Status"),
-        ("9", "quit", "Exit"),
-    ]
-
-    CLICK_MAP = {
-        "btn-launch-files": "launch_files",
-        "btn-launch-pycharm": "launch_pycharm",
-        "btn-launch-terminal": "launch_terminal",
-        "btn-rdp": "launch_rdp",
-        "btn-verify": "run_verify",
-        "btn-setup": "run_setup",
-        "btn-configure": "configure",
-        "btn-status": "view_status",
-        "btn-exit": "quit",
-    }
+    Uses two OptionList widgets for Tab-focusable, Enter-to-select navigation.
+    Launch Applications use alpha keys (a-z), Maintenance uses numeric keys (1-5).
+    """
 
     CSS = """
     #launcher-title {
@@ -69,47 +74,42 @@ class LauncherScreen(ClickDispatchScreen):
         color: $secondary;
         margin-bottom: 1;
     }
-    .button-bar {
+    OptionList {
         height: auto;
-        padding: 0 0;
-    }
-    .action-link {
-        margin: 0 2;
-        padding: 0 2;
-        text-style: bold;
-    }
-    #btn-launch-files {
-        color: $accent;
-    }
-    #btn-launch-pycharm {
-        color: $accent;
-    }
-    #btn-launch-terminal {
-        color: $accent;
-    }
-    #btn-rdp {
-        color: $success;
-    }
-    #btn-verify {
-        color: $text;
-    }
-    #btn-setup {
-        color: $warning;
-    }
-    #btn-configure {
-        color: $text;
-    }
-    #btn-status {
-        color: $text;
-    }
-    #btn-exit {
-        color: $text;
+        border: none;
+        padding: 0;
+        background: $surface;
     }
     """
 
     def __init__(self, config: SetupConfig, **kwargs) -> None:
         super().__init__(**kwargs)
         self._config = config
+        self._optional_apps = config.optionalApps
+
+        # Build ordered lists of (action_name, label) for each section.
+        self._launch_items: list[tuple[str, str]] = []
+        for action, label in _STANDARD_APPS:
+            self._launch_items.append((action, label))
+        for app in self._optional_apps:
+            self._launch_items.append((_app_action_name(app), f"Launch {app.display_name}"))
+
+        self._maint_items: list[tuple[str, str]] = list(_MAINTENANCE)
+
+    def on_mount(self) -> None:
+        """Bind keys, restore last selection, and focus the launch list."""
+        for i, (action, label) in enumerate(self._launch_items):
+            if i < 26:
+                key = string.ascii_lowercase[i]
+                self._bindings.bind(key, action, label)
+        for i, (action, label) in enumerate(self._maint_items):
+            if i < 9:
+                self._bindings.bind(str(i + 1), action, label)
+        launch_list = self.query_one("#launch-list", OptionList)
+        saved = load_launcher_selection()
+        if 0 <= saved < launch_list.option_count:
+            launch_list.highlighted = saved
+        launch_list.focus()
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
@@ -117,32 +117,52 @@ class LauncherScreen(ClickDispatchScreen):
 
             with Vertical(id="launch-section"):
                 yield Static("Launch Applications", classes="section-header")
-                with Vertical(classes="button-bar"):
-                    yield Static("\\[1] Launch File Manager", id="btn-launch-files", classes="action-link")
-                    yield Static("\\[2] Launch PyCharm", id="btn-launch-pycharm", classes="action-link")
-                    yield Static("\\[3] Open Ubuntu Terminal", id="btn-launch-terminal", classes="action-link")
-                    yield Static("\\[4] RDP into Ubuntu (XFCE4 Desktop)", id="btn-rdp", classes="action-link")
+                launch_options = []
+                for i, (_, label) in enumerate(self._launch_items):
+                    key = string.ascii_lowercase[i] if i < 26 else " "
+                    launch_options.append(f"[{key}] {label}")
+                yield OptionList(*launch_options, id="launch-list")
 
             with Vertical(id="maintenance-section"):
                 yield Static("Maintenance", classes="maint-header")
-                with Vertical(classes="button-bar"):
-                    yield Static("\\[5] Run Verification", id="btn-verify", classes="action-link")
-                    yield Static("\\[6] Re-run Setup", id="btn-setup", classes="action-link")
-                    yield Static("\\[7] Configure Settings", id="btn-configure", classes="action-link")
-                    yield Static("\\[8] View Status", id="btn-status", classes="action-link")
-                    yield Static("\\[9] Exit", id="btn-exit", classes="action-link")
+                maint_options = []
+                for i, (_, label) in enumerate(self._maint_items):
+                    maint_options.append(f"[{i + 1}] {label}")
+                yield OptionList(*maint_options, id="maint-list")
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        """Persist the highlighted launch item for next session."""
+        if event.option_list.id == "launch-list":
+            save_launcher_selection(event.option_index)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Dispatch Enter-key selection from either OptionList."""
+        list_id = event.option_list.id
+        idx = event.option_index
+        if list_id == "launch-list" and idx < len(self._launch_items):
+            save_launcher_selection(idx)
+            action_name = self._launch_items[idx][0]
+            method = getattr(self, f"action_{action_name}", None)
+            if method:
+                method()
+        elif list_id == "maint-list" and idx < len(self._maint_items):
+            action_name = self._maint_items[idx][0]
+            method = getattr(self, f"action_{action_name}", None)
+            if method:
+                method()
+
+    # ── Standard app actions ─────────────────────────────────────────
 
     def action_launch_files(self) -> None:
-        notify_launch(self.app, "btn-launch-files", self._config.distroImportName)
-
-    def action_launch_pycharm(self) -> None:
-        notify_launch(self.app, "btn-launch-pycharm", self._config.distroImportName)
+        notify_launch(self.app, "nautilus", "File Manager", self._config.distroImportName)
 
     def action_launch_terminal(self) -> None:
         launch_windows_terminal()
 
     def action_launch_rdp(self) -> None:
         self._launch_rdp()
+
+    # ── Maintenance actions ──────────────────────────────────────────
 
     def action_run_verify(self) -> None:
         from .verify import VerifyScreen
@@ -161,6 +181,22 @@ class LauncherScreen(ClickDispatchScreen):
 
     def action_quit(self) -> None:
         self.app.exit()
+
+    # ── Dynamic optional-app dispatch ────────────────────────────────
+
+    def __getattr__(self, name: str):
+        """Handle action_launch_app_<id> calls for optional apps."""
+        if name.startswith("action_launch_app_"):
+            app_id = name[len("action_launch_app_"):].replace("_", "-")
+            for entry in self._optional_apps:
+                if entry.id == app_id:
+                    return lambda: notify_launch(
+                        self.app, entry.command, entry.display_name,
+                        self._config.distroImportName,
+                    )
+        raise AttributeError(name)
+
+    # ── Helpers ──────────────────────────────────────────────────────
 
     @work
     async def _launch_rdp(self) -> None:

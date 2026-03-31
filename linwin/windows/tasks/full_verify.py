@@ -128,8 +128,11 @@ async def run_full_verification(
         for pkg in config.aptPackages:
             await _check(f"apt: {pkg}", await check_apt_package(wsl_run, pkg), category="linux")
 
-        for snap in config.snaps:
-            await _check(f"snap: {snap.name}", await check_snap_package(wsl_run, snap.name), category="linux")
+        for app in config.optionalApps:
+            if app.install_method == "snap":
+                await _check(f"snap: {app.id}", await check_snap_package(wsl_run, app.id), category="linux")
+            elif app.install_method == "apt":
+                await _check(f"apt: {app.id}", await check_apt_package(wsl_run, app.id), category="linux")
 
         r = await run_wsl(config.distroImportName, "echo $DISPLAY")
         has_display = bool(r.output.strip())

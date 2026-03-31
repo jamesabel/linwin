@@ -56,3 +56,29 @@ def clear_state() -> None:
     sf = _state_file()
     if sf.exists():
         sf.unlink()
+
+
+# ── Launcher selection persistence ───────────────────────────────────
+
+
+def _launcher_prefs_file() -> Path:
+    return _state_dir() / "launcher_prefs.json"
+
+
+def save_launcher_selection(index: int) -> None:
+    """Persist the last highlighted launcher item index."""
+    state_dir = _state_dir()
+    state_dir.mkdir(parents=True, exist_ok=True)
+    _launcher_prefs_file().write_text(json.dumps({"last_selected": index}))
+
+
+def load_launcher_selection() -> int:
+    """Load the last highlighted launcher item index (default 0)."""
+    pf = _launcher_prefs_file()
+    if pf.exists():
+        try:
+            data = json.loads(pf.read_text())
+            return data.get("last_selected", 0)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return 0

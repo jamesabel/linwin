@@ -66,15 +66,18 @@ class TestSetupConfigFromDict:
 
 class TestSetupConfigRoundTrip:
     def test_to_dict_and_back(self):
+        from linwin.shared.config import AppEntry
         original = SetupConfig(
             distroName="Test",
             wslDriveLetter="Z",
-            snaps=[SnapPackage("vim", False)],
+            optionalApps=[AppEntry("vim", "Vim", "vim", "snap", classic=False)],
         )
         data = original.to_dict()
         restored = SetupConfig.from_dict(data)
         assert restored.distroName == original.distroName
         assert restored.wslDriveLetter == original.wslDriveLetter
+        assert len(restored.optionalApps) == 1
+        assert restored.optionalApps[0].id == "vim"
         assert restored.snaps[0].name == "vim"
         assert restored.snaps[0].classic is False
 

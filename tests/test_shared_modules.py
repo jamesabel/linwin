@@ -173,7 +173,7 @@ class TestLauncher:
         from linwin.shared.launcher import notify_launch
         app = MagicMock()
         with patch("linwin.shared.launcher.launch_wsl_app"):
-            notify_launch(app, "btn-launch-files", "Ubuntu")
+            notify_launch(app, "nautilus", "File Manager", "Ubuntu")
             app.notify.assert_called_once()
             assert "Launched" in app.notify.call_args[0][0]
 
@@ -181,7 +181,7 @@ class TestLauncher:
         from linwin.shared.launcher import notify_launch
         app = MagicMock()
         with patch("linwin.shared.launcher.launch_wsl_app", side_effect=RuntimeError("fail")):
-            notify_launch(app, "btn-launch-files", "Ubuntu")
+            notify_launch(app, "nautilus", "File Manager", "Ubuntu")
             app.notify.assert_called_once()
             assert app.notify.call_args[1]["severity"] == "error"
 
@@ -269,21 +269,21 @@ class TestConfigHelpers:
         from linwin.shared.config import parse_apt_input
         assert parse_apt_input("  ,  , a , ") == ["a"]
 
-    def test_collect_snap_selections(self):
-        from linwin.shared.config import collect_snap_selections
+    def test_collect_app_selections(self):
+        from linwin.shared.config import collect_app_selections
         mock_cb = MagicMock()
         mock_cb.value = True
         query_fn = MagicMock(return_value=mock_cb)
-        snaps = collect_snap_selections(query_fn)
-        assert len(snaps) > 0
+        apps = collect_app_selections(query_fn)
+        assert len(apps) > 0
 
-    def test_collect_snap_selections_none_selected(self):
-        from linwin.shared.config import collect_snap_selections
+    def test_collect_app_selections_none_selected(self):
+        from linwin.shared.config import collect_app_selections
         mock_cb = MagicMock()
         mock_cb.value = False
         query_fn = MagicMock(return_value=mock_cb)
-        snaps = collect_snap_selections(query_fn)
-        assert len(snaps) == 0
+        apps = collect_app_selections(query_fn)
+        assert len(apps) == 0
 
     def test_get_config_path_with_script(self, tmp_path):
         from linwin.shared.config import get_config_path

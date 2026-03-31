@@ -19,15 +19,64 @@ class WslConfig:
 
 @dataclass
 class SnapPackage:
+    """Legacy snap package entry. Kept for backward compatibility with install_snap()."""
+
     name: str
     classic: bool = True
 
 
-# Snap packages offered in the config editor UI.
+@dataclass
+class AppEntry:
+    """An optional application that can be selected, installed, and launched.
+
+    Attributes:
+        id: Unique identifier, typically the package name (e.g. "pycharm-community").
+        display_name: Human-readable name shown in the UI.
+        command: Shell command to launch the app inside WSL.
+        install_method: How the app is installed — "snap", "apt", or "custom".
+            "custom" means the user installs it themselves; linwin only provides
+            a launch button.
+        classic: Whether to use ``--classic`` flag (snap only).
+    """
+
+    id: str
+    display_name: str
+    command: str
+    install_method: str = "snap"  # "snap" | "apt" | "custom"
+    classic: bool = True
+
+
+# Curated registry of well-known optional applications.
+# To add a new app, just append an AppEntry line.
+APP_REGISTRY: list[AppEntry] = [
+    # IDEs
+    AppEntry("code",                    "VS Code",                  "code",                     "snap", classic=True),
+    AppEntry("pycharm-community",       "PyCharm Community",        "pycharm-community",        "snap", classic=True),
+    AppEntry("intellij-idea-community", "IntelliJ IDEA Community",  "intellij-idea-community",  "snap", classic=True),
+    # Browsers
+    AppEntry("firefox",                 "Firefox",                  "firefox",                  "snap", classic=False),
+    AppEntry("chromium",                "Chromium",                 "chromium",                 "snap", classic=False),
+    # Editors
+    AppEntry("sublime-text",            "Sublime Text",             "subl",                     "snap", classic=True),
+    # Graphics
+    AppEntry("gimp",                    "GIMP",                     "gimp",                     "snap", classic=False),
+    # Office
+    AppEntry("libreoffice",             "LibreOffice",              "libreoffice",              "snap", classic=False),
+    # Apt-installable apps
+    AppEntry("thunderbird",             "Thunderbird",              "thunderbird",              "apt"),
+    AppEntry("gedit",                   "Text Editor (gedit)",      "gedit",                    "apt"),
+    # Custom-installed apps (launch button only, user installs separately)
+    AppEntry("matlab",                  "MATLAB",                   "matlab",                   "custom"),
+    AppEntry("mathematica",             "Mathematica",              "mathematica",              "custom"),
+]
+
+# Index for fast lookup by ID.
+_APP_REGISTRY_MAP: dict[str, AppEntry] = {a.id: a for a in APP_REGISTRY}
+
+
+# Backward-compat alias used by legacy code / tests.
 AVAILABLE_SNAPS: list[tuple[str, str]] = [
-    ("code", "VS Code"),
-    ("intellij-idea-community", "IntelliJ IDEA Community"),
-    ("pycharm-community", "PyCharm Community"),
+    (a.id, a.display_name) for a in APP_REGISTRY if a.install_method == "snap"
 ]
 
 
@@ -39,6 +88,7 @@ class SetupConfig:
     wslDriveLetter: str = "V"
     wslconfig: WslConfig = field(default_factory=WslConfig)
     snaps: list[SnapPackage] = field(default_factory=list)
+    optionalApps: list[AppEntry] = field(default_factory=list)
     aptPackages: list[str] = field(default_factory=lambda: ["nautilus", "x11-apps"])
     enableSystemd: bool = True
     xrdpPort: int = 3390
@@ -46,7 +96,28 @@ class SetupConfig:
     @staticmethod
     def from_dict(data: dict) -> SetupConfig:
         wslconfig = WslConfig(**data.get("wslconfig", {}))
-        snaps = [SnapPackage(**s) for s in data.get("snaps", [])]
+
+        # Prefer optionalApps if present; fall back to migrating legacy snaps.
+        if "optionalApps" in data:
+            optional_apps = [AppEntry(**a) for a in data["optionalApps"]]
+        else:
+            optional_apps = []
+            for s in data.get("snaps", []):
+                name = s["name"] if isinstance(s, dict) else s
+                classic = s.get("classic", True) if isinstance(s, dict) else True
+                reg = _APP_REGISTRY_MAP.get(name)
+                optional_apps.append(AppEntry(
+                    id=name,
+                    display_name=reg.display_name if reg else name,
+                    command=reg.command if reg else name,
+                    install_method="snap",
+                    classic=classic,
+                ))
+
+        # Derive snaps from optionalApps for backward-compatible installation.
+        snaps = [SnapPackage(a.id, a.classic) for a in optional_apps
+                 if a.install_method == "snap"]
+
         return SetupConfig(
             distroName=data.get("distroName", "Ubuntu-22.04"),
             distroImportName=data.get("distroImportName", "Ubuntu"),
@@ -54,13 +125,18 @@ class SetupConfig:
             wslDriveLetter=data.get("wslDriveLetter", "V"),
             wslconfig=wslconfig,
             snaps=snaps,
+            optionalApps=optional_apps,
             aptPackages=data.get("aptPackages", ["nautilus", "x11-apps"]),
             enableSystemd=data.get("enableSystemd", True),
             xrdpPort=data.get("xrdpPort", 3390),
         )
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        # Keep snaps derived from optionalApps for backward compat.
+        d["snaps"] = [{"name": a.id, "classic": a.classic}
+                      for a in self.optionalApps if a.install_method == "snap"]
+        return d
 
 
 def get_config_path(script_path: str | None = None) -> Path:
@@ -111,24 +187,24 @@ def validate_config(config: SetupConfig) -> list[str]:
     return errors
 
 
-def collect_snap_selections(query_one_fn, available_snaps: list[tuple[str, str]] | None = None) -> list[SnapPackage]:
-    """Read snap checkbox values from the UI and return selected SnapPackages.
+def collect_app_selections(query_one_fn, registry: list[AppEntry] | None = None) -> list[AppEntry]:
+    """Read app checkbox values from the UI and return selected AppEntries.
 
     Args:
         query_one_fn: Callable that resolves a CSS selector to a widget
                       (typically ``screen.query_one``).
-        available_snaps: Snap list to iterate; defaults to ``AVAILABLE_SNAPS``.
+        registry: App list to iterate; defaults to ``APP_REGISTRY``.
     """
     from .widgets import AsciiCheckbox
 
-    if available_snaps is None:
-        available_snaps = AVAILABLE_SNAPS
-    snaps = []
-    for snap_id, _ in available_snaps:
-        cb = query_one_fn(f"#snap-{snap_id}", AsciiCheckbox)
+    if registry is None:
+        registry = APP_REGISTRY
+    selected = []
+    for app in registry:
+        cb = query_one_fn(f"#app-{app.id}", AsciiCheckbox)
         if cb.value:
-            snaps.append(SnapPackage(snap_id, True))
-    return snaps
+            selected.append(app)
+    return selected
 
 
 def parse_apt_input(raw: str) -> list[str]:

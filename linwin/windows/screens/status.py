@@ -206,10 +206,10 @@ class StatusScreen(ClickDispatchScreen):
                 yield info_row("Apt Packages:", ", ".join(c.aptPackages))
 
             with Vertical(classes="button-bar"):
-                if self._health.ready:
-                    yield Static("\\[3] Go to Launcher", id="btn-launcher", classes="action-link")
                 yield Static("\\[1] Run Setup", id="btn-start", classes="action-link")
                 yield Static("\\[2] Configure Settings", id="btn-configure", classes="action-link")
+                if self._health.ready:
+                    yield Static("\\[3] Go to Launcher", id="btn-launcher", classes="action-link")
                 yield Static("\\[Esc] Quit", id="btn-quit", classes="action-link")
 
     def on_mount(self) -> None:

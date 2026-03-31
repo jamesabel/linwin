@@ -27,8 +27,12 @@ def build_task_list(config: SetupConfig) -> list[tuple[str, str]]:
     for pkg in config.aptPackages:
         tasks.append((f"apt_{pkg}", f"Install {pkg}"))
     tasks.append(("setup_snapd", "Setup snapd"))
-    for snap in config.snaps:
-        tasks.append((f"snap_{snap.name}", f"Install {snap.name}"))
+    # Optional apps: snap and apt are auto-installed; custom are skipped.
+    for app in config.optionalApps:
+        if app.install_method == "snap":
+            tasks.append((f"snap_{app.id}", f"Install {app.display_name} (snap)"))
+        elif app.install_method == "apt":
+            tasks.append((f"apt_opt_{app.id}", f"Install {app.display_name} (apt)"))
     tasks.append(("verify_wslg", "Verify WSLg"))
     return tasks
 
@@ -132,20 +136,35 @@ class SetupScreen(ClickDispatchScreen):
             result = await snaps.ensure_snapd(on_line)
             tasks.set_status("setup_snapd", "done" if result.ok else "failed")
 
-        # 6. Install snaps
-        for snap in config.snaps:
-            tid = f"snap_{snap.name}"
-            tasks.set_status(tid, "running")
-            log.write_command(f"Installing snap: {snap.name}...")
-            result = await snaps.install_snap(snap, on_line)
-            if result.skipped:
-                tasks.set_status(tid, "skipped")
-                log.write_info(f"{snap.name} already installed.")
-            elif result.ok:
-                tasks.set_status(tid, "done")
-            else:
-                tasks.set_status(tid, "failed")
-                log.write_error(result.message)
+        # 6. Install optional apps (snap and apt; custom skipped)
+        for app in config.optionalApps:
+            if app.install_method == "snap":
+                from ...shared.config import SnapPackage
+                tid = f"snap_{app.id}"
+                tasks.set_status(tid, "running")
+                log.write_command(f"Installing snap: {app.display_name}...")
+                result = await snaps.install_snap(SnapPackage(app.id, app.classic), on_line)
+                if result.skipped:
+                    tasks.set_status(tid, "skipped")
+                    log.write_info(f"{app.display_name} already installed.")
+                elif result.ok:
+                    tasks.set_status(tid, "done")
+                else:
+                    tasks.set_status(tid, "failed")
+                    log.write_error(result.message)
+            elif app.install_method == "apt":
+                tid = f"apt_opt_{app.id}"
+                tasks.set_status(tid, "running")
+                log.write_command(f"Installing {app.display_name}...")
+                result = await apt.install_apt_package(app.id, on_line)
+                if result.skipped:
+                    tasks.set_status(tid, "skipped")
+                    log.write_info(f"{app.display_name} already installed.")
+                elif result.ok:
+                    tasks.set_status(tid, "done")
+                else:
+                    tasks.set_status(tid, "failed")
+                    log.write_error(result.message)
 
         # 7. Verify WSLg
         tasks.set_status("verify_wslg", "running")
