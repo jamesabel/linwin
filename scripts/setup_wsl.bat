@@ -36,9 +36,15 @@ if %errorlevel% neq 0 (
 )
 echo.
 
+:: Compute a date 7 days ago (YYYY-MM-DD) for supply-chain security.
+:: Only install packages published at least 1 week ago so the community
+:: has time to discover compromises or vulnerabilities.
+for /f %%d in ('powershell -NoProfile -Command "(Get-Date).AddDays(-7).ToString('yyyy-MM-dd')"') do set EXCLUDE_DATE=%%d
+echo Security: excluding packages newer than %EXCLUDE_DATE% (1 week ago)
+
 :: Sync project dependencies
 echo Syncing project dependencies...
-uv sync
+uv sync --exclude-newer "%EXCLUDE_DATE%"
 if %errorlevel% neq 0 (
     echo ERROR: Failed to install dependencies.
     pause
