@@ -15,6 +15,8 @@ class ConfigEditorScreen(Screen):
     """Edit config.json values interactively."""
 
     BINDINGS = [
+        ("1", "save", "Save"),
+        ("2", "scan_drives", "Scan Drives"),
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -50,7 +52,7 @@ class ConfigEditorScreen(Screen):
                 yield field_row("Distro Name:", c.distroName, "input-distro-name")
                 yield field_row("Import Name:", c.distroImportName, "input-import-name")
                 yield field_row("Drive Letter:", c.wslDriveLetter, "input-drive-letter")
-                yield Static(">> Scan Drives <<", id="btn-scan-drives", classes="action-link")
+                yield Static("\\[2] Scan Drives", id="btn-scan-drives", classes="action-link")
                 yield field_row("Install Path:", c.wslInstallPath, "input-install-path")
 
             with Vertical(classes="editor-section"):
@@ -71,8 +73,17 @@ class ConfigEditorScreen(Screen):
                 yield field_row("Packages:", ", ".join(c.aptPackages), "input-apt-packages")
 
             with Vertical(classes="button-bar"):
-                yield Static(">> Save & Back <<", id="btn-save", classes="action-link")
-                yield Static(">> Cancel (Escape) <<", id="btn-cancel", classes="action-link")
+                yield Static("\\[1] Save & Back", id="btn-save", classes="action-link")
+                yield Static("\\[Esc] Cancel", id="btn-cancel", classes="action-link")
+
+    def action_save(self) -> None:
+        self._save_config()
+        self.app.pop_screen()
+
+    def action_scan_drives(self) -> None:
+        from .drive_picker import DrivePickerModal
+        current = self.query_one("#input-drive-letter", Input).value
+        self.app.push_screen(DrivePickerModal(current), self._on_drive_selected)
 
     def action_cancel(self) -> None:
         self.app.pop_screen()

@@ -30,66 +30,64 @@ class TestWindowsAppStartup:
     """Verify the Textual app starts up without crashing."""
 
     async def test_app_does_not_crash_on_startup(self):
-        """App must survive mount + health check without an unhandled exception.
-
-        Reproduces the abrupt-exit scenario where _startup_check fires
-        concurrent subprocesses and the app dies before they complete.
-        """
+        """App must reach LauncherScreen when all checks pass."""
         from unittest.mock import AsyncMock, patch
         from linwin.shared.config import SetupConfig
         from linwin.windows.app import WindowsSetupApp
-        from linwin.windows.tasks.health_check import HealthStatus
+        from linwin.windows.tasks.full_verify import VerifyResult
 
         config = SetupConfig()
         app = WindowsSetupApp(config)
 
-        mock_health = HealthStatus(
-            wsl_feature=True,
-            vm_platform=True,
-            distro_registered=True,
-            vhd_on_target=True,
-        )
+        mock_verify = VerifyResult(checks=[])  # empty = all_passed
 
         with patch(
-            "linwin.windows.tasks.health_check.run_health_check",
+            "linwin.windows.tasks.full_verify.run_full_verification",
             new_callable=AsyncMock,
-            return_value=mock_health,
-        ):
+            return_value=mock_verify,
+        ), patch("asyncio.sleep", new_callable=AsyncMock):
             async with app.run_test(size=(80, 24)) as pilot:
                 await pilot.pause()
-                # App should be showing the LauncherScreen (health passed)
                 from linwin.windows.screens.launcher import LauncherScreen
                 assert isinstance(app.screen, LauncherScreen)
 
-    async def test_app_survives_health_check_failure(self):
-        """App must not crash when health check reports failures."""
+    async def test_app_shows_proposal_on_failure(self):
+        """App must show SetupProposalScreen when verification finds failures."""
         from unittest.mock import AsyncMock, patch
         from linwin.shared.config import SetupConfig
         from linwin.windows.app import WindowsSetupApp
-        from linwin.windows.tasks.health_check import HealthStatus
+        from linwin.windows.tasks.full_verify import VerifyResult, VerifyCheckItem
+        from linwin.windows.tasks.auto_config import SystemProfile
+        from linwin.windows.tasks.drive_scan import DriveCandidate
 
         config = SetupConfig()
         app = WindowsSetupApp(config)
 
-        mock_health = HealthStatus(
-            wsl_feature=False,
-            vm_platform=False,
-            distro_registered=False,
-            vhd_on_target=False,
+        mock_verify = VerifyResult(checks=[
+            VerifyCheckItem("WSL feature enabled", False),
+        ])
+        mock_profile = SystemProfile(
+            ram_gb=32, cpu_count=16,
+            best_drive=DriveCandidate("D", 400, 1000, "SSD", "NVMe", ""),
+            all_drives=[],
         )
 
         with patch(
-            "linwin.windows.tasks.health_check.run_health_check",
+            "linwin.windows.tasks.full_verify.run_full_verification",
             new_callable=AsyncMock,
-            return_value=mock_health,
+            return_value=mock_verify,
+        ), patch(
+            "linwin.windows.tasks.auto_config.detect_system_profile",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
         ):
             async with app.run_test(size=(80, 24)) as pilot:
                 await pilot.pause()
-                from linwin.windows.screens.status import StatusScreen
-                assert isinstance(app.screen, StatusScreen)
+                from linwin.windows.screens.setup_proposal import SetupProposalScreen
+                assert isinstance(app.screen, SetupProposalScreen)
 
-    async def test_app_survives_health_check_exception(self):
-        """App must not crash when health check raises an exception."""
+    async def test_app_survives_verification_exception(self):
+        """App must not crash when verification raises an exception."""
         from unittest.mock import AsyncMock, patch
         from linwin.shared.config import SetupConfig
         from linwin.windows.app import WindowsSetupApp
@@ -98,7 +96,7 @@ class TestWindowsAppStartup:
         app = WindowsSetupApp(config)
 
         with patch(
-            "linwin.windows.tasks.health_check.run_health_check",
+            "linwin.windows.tasks.full_verify.run_full_verification",
             new_callable=AsyncMock,
             side_effect=RuntimeError("subprocess died"),
         ):

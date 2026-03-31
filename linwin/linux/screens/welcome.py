@@ -17,6 +17,12 @@ from ...shared.subprocess_runner import run_local
 class WelcomeScreen(Screen):
     """Welcome screen with Linux system detection."""
 
+    BINDINGS = [
+        ("1", "configure", "Configure"),
+        ("2", "start_setup", "Start Setup"),
+        ("escape", "quit_app", "Quit"),
+    ]
+
     CSS = """
     #welcome-info {
         border: ascii $primary;
@@ -80,9 +86,9 @@ class WelcomeScreen(Screen):
                 yield _info_row("Enable Systemd:", "Yes" if c.enableSystemd else "No")
 
             with Vertical(classes="button-bar"):
-                yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
-                yield Static(">> Start Setup <<", id="btn-start", classes="action-link")
-                yield Static(">> Quit (Escape) <<", id="btn-quit", classes="action-link")
+                yield Static("\\[1] Configure Settings", id="btn-configure", classes="action-link")
+                yield Static("\\[2] Start Setup", id="btn-start", classes="action-link")
+                yield Static("\\[Esc] Quit", id="btn-quit", classes="action-link")
 
     def on_mount(self) -> None:
         self.detect_system_info()
@@ -139,6 +145,17 @@ class WelcomeScreen(Screen):
             await info_box.mount(row)
             await row.mount(Label(label_text))
             await row.mount(Label(f"{value_text}{status_str}"))
+
+    def action_configure(self) -> None:
+        from .config_editor import ConfigEditorScreen
+        self.app.push_screen(ConfigEditorScreen(self._config))
+
+    def action_start_setup(self) -> None:
+        from .setup import SetupScreen
+        self.app.push_screen(SetupScreen(self._config))
+
+    def action_quit_app(self) -> None:
+        self.app.exit()
 
     def on_click(self, event) -> None:
         widget = event.widget

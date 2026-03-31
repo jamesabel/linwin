@@ -15,7 +15,7 @@ import pytest
 
 from linwin.shared.subprocess_runner import run_wsl
 
-from conftest import _run, _recv_exact, _cert_flag
+from .helpers import _run, _recv_exact, _cert_flag
 
 # Temporary Linux user created for the RDP auth tests, cleaned up after.
 TEST_USER = "_rdptest"

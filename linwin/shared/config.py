@@ -38,11 +38,7 @@ class SetupConfig:
     wslInstallPath: str = "V:\\WSL\\Ubuntu"
     wslDriveLetter: str = "V"
     wslconfig: WslConfig = field(default_factory=WslConfig)
-    snaps: list[SnapPackage] = field(default_factory=lambda: [
-        SnapPackage("code", True),
-        SnapPackage("intellij-idea-community", True),
-        SnapPackage("pycharm-community", True),
-    ])
+    snaps: list[SnapPackage] = field(default_factory=list)
     aptPackages: list[str] = field(default_factory=lambda: ["nautilus", "x11-apps"])
     enableSystemd: bool = True
     xrdpPort: int = 3390

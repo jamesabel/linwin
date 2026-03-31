@@ -18,8 +18,10 @@ def launch_wsl_app(distro: str, *args: str) -> None:
     """Launch a GUI app inside WSL (non-blocking, fire-and-forget).
 
     Uses ``bash -lc`` so that snap binaries in /snap/bin are on PATH.
+    Starts a keepalive so the VM stays up after the TUI exits.
     Raises on failure so the caller can display an error notification.
     """
+    ensure_wsl_keepalive(distro)
     cmd = " ".join(args)
     kwargs = {}
     if sys.platform == "win32":
@@ -76,11 +78,37 @@ def ensure_portproxy(port: int, distro: str = "Ubuntu") -> None:
     )
 
 
+_keepalive_proc: subprocess.Popen | None = None
+
+
+def ensure_wsl_keepalive(distro: str = "Ubuntu") -> None:
+    """Keep the WSL VM alive by running a background ``sleep infinity``.
+
+    WSL2 shuts down the VM when all wsl.exe processes exit, which kills
+    xrdp and any active RDP sessions.  This starts a hidden background
+    process that holds the VM open indefinitely.
+    """
+    global _keepalive_proc
+    if _keepalive_proc is not None and _keepalive_proc.poll() is None:
+        return  # already running
+    kwargs = {}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    _keepalive_proc = subprocess.Popen(
+        ["wsl.exe", "-d", distro, "--", "sleep", "infinity"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        **kwargs,
+    )
+
+
 def launch_rdp(port: int = 3390, distro: str = "Ubuntu") -> None:
     """Open Remote Desktop Connection to the WSL xrdp server.
 
     Ensures a port proxy is in place so 127.0.0.1:<port> reaches xrdp
-    inside the WSL2 VM, then launches mstsc.
+    inside the WSL2 VM, starts a WSL keepalive so the VM doesn't shut
+    down when the TUI exits, then launches mstsc.
     """
     ensure_portproxy(port, distro)
+    ensure_wsl_keepalive(distro)
     subprocess.Popen(["mstsc.exe", f"/v:127.0.0.1:{port}"])

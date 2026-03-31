@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
@@ -11,14 +9,20 @@ from textual.widgets import Static
 from textual import work
 
 from ...shared.config import SetupConfig
-from ...shared.subprocess_runner import run_powershell, run_wsl
 from ...shared.widgets import VerifyDashboard
-from ..tasks import features, validators, wsl_install
-from ..tasks.wsl_config import check_wslconfig_exists, get_wslconfig_path
+from ..tasks.full_verify import run_full_verification
 
 
 class VerifyScreen(Screen):
     """Verification dashboard showing PASS/FAIL/WARN for all checks."""
+
+    BINDINGS = [
+        ("1", "go_launcher", "Launcher"),
+        ("2", "launch_files", "Files"),
+        ("3", "launch_pycharm", "PyCharm"),
+        ("4", "launch_terminal", "Terminal"),
+        ("5", "quit", "Exit"),
+    ]
 
     CSS = """
     #verify-status {
@@ -57,11 +61,11 @@ class VerifyScreen(Screen):
             yield VerifyDashboard(title="Linux Checks", id="linux-verify")
             yield Static("Running verification...", id="verify-status")
             with Horizontal(classes="button-bar"):
-                yield Static(">> Back to Launcher <<", id="btn-launcher", classes="action-link")
-                yield Static(">> Launch File Manager <<", id="btn-launch-files", classes="action-link")
-                yield Static(">> Launch PyCharm <<", id="btn-launch-pycharm", classes="action-link")
-                yield Static(">> Open Ubuntu Terminal <<", id="btn-launch-terminal", classes="action-link")
-                yield Static(">> Exit <<", id="btn-exit", classes="action-link")
+                yield Static("\\[1] Back to Launcher", id="btn-launcher", classes="action-link")
+                yield Static("\\[2] Launch File Manager", id="btn-launch-files", classes="action-link")
+                yield Static("\\[3] Launch PyCharm", id="btn-launch-pycharm", classes="action-link")
+                yield Static("\\[4] Open Ubuntu Terminal", id="btn-launch-terminal", classes="action-link")
+                yield Static("\\[5] Exit", id="btn-exit", classes="action-link")
 
     def on_mount(self) -> None:
         self.run_verification()
@@ -71,132 +75,47 @@ class VerifyScreen(Screen):
         win_dash = self.query_one("#win-verify", VerifyDashboard)
         linux_dash = self.query_one("#linux-verify", VerifyDashboard)
         status = self.query_one("#verify-status", Static)
-        config = self._config
 
-        # --- Windows checks ---
+        result = await run_full_verification(self._config)
 
-        # WSL feature
-        wsl_on = await features.check_feature("Microsoft-Windows-Subsystem-Linux")
-        win_dash.add_check("WSL feature enabled", wsl_on)
+        for item in result.checks:
+            dash = linux_dash if item.category == "linux" else win_dash
+            dash.add_check(item.name, item.passed, item.detail, warn=item.warn)
 
-        # VM Platform
-        vm_on = await features.check_feature("VirtualMachinePlatform")
-        win_dash.add_check("Virtual Machine Platform enabled", vm_on)
-
-        # WSL installed (wsl --version returns exit=1 on some builds even when working)
-        result = await run_powershell("wsl --version 2>&1 | Select-Object -First 1")
-        wsl_version_str = result.output.strip()
-        win_dash.add_check("WSL installed", "version" in wsl_version_str.lower(), wsl_version_str)
-
-        # Distro registered
-        registered = await wsl_install.is_distro_registered(config)
-        win_dash.add_check(f"Distro '{config.distroImportName}' registered", registered)
-
-        # Distro is WSL 2 (wsl -l -v emits UTF-16 with nulls; strip them before matching)
-        if registered:
-            info = await run_powershell(
-                f"(wsl -l -v 2>&1 | Out-String) -replace '\\0','' | Select-String '{config.distroImportName}'"
-            )
-            version_line = info.output.replace("\x00", "").strip()
-            is_v2 = "2" in version_line
-            win_dash.add_check("Distro is WSL version 2", is_v2, version_line)
-
-        # Drive exists
-        drive_result = await validators.check_drive_exists(config.wslDriveLetter)
-        win_dash.add_check(f"Drive {config.wslDriveLetter}: exists", drive_result.ok, drive_result.detail)
-
-        # VHD on target drive
-        vhd_path = os.path.join(config.wslInstallPath, "ext4.vhdx")
-        vhd_exists = os.path.exists(vhd_path)
-        win_dash.add_check("Distro VHD on target drive", vhd_exists, vhd_path)
-
-        # .wslconfig
-        wc_exists, wc_content = check_wslconfig_exists()
-        win_dash.add_check(".wslconfig exists", wc_exists, get_wslconfig_path())
-
-        if wc_exists:
-            has_gui = "guiapplications" in wc_content.lower() and "true" in wc_content.lower()
-            win_dash.add_check("guiApplications=true in .wslconfig", has_gui)
-
-        # --- Linux checks ---
-        if registered:
-            # systemd
-            result = await run_wsl(config.distroImportName, "ps -p 1 -o comm= 2>/dev/null")
-            is_systemd = result.output.strip() == "systemd"
-            linux_dash.add_check("systemd is PID 1", is_systemd, result.output.strip())
-
-            # snapd
-            result = await run_wsl(config.distroImportName, "systemctl is-active snapd 2>/dev/null")
-            snapd_ok = result.output.strip() == "active"
-            linux_dash.add_check("snapd service running", snapd_ok)
-
-            # apt packages
-            for pkg in config.aptPackages:
-                result = await run_wsl(
-                    config.distroImportName,
-                    f"dpkg -l {pkg} 2>/dev/null | grep -q '^ii' && echo yes || echo no",
-                )
-                linux_dash.add_check(f"apt: {pkg}", result.output.strip() == "yes")
-
-            # snap packages
-            for snap in config.snaps:
-                result = await run_wsl(
-                    config.distroImportName,
-                    f"snap list {snap.name} 2>/dev/null && echo yes || echo no",
-                )
-                linux_dash.add_check(f"snap: {snap.name}", "yes" in result.output)
-
-            # WSLg
-            result = await run_wsl(config.distroImportName, "echo $DISPLAY")
-            has_display = bool(result.output.strip())
-            linux_dash.add_check("DISPLAY set", has_display, result.output.strip(), warn=not has_display)
-
-            result = await run_wsl(config.distroImportName, "test -d /mnt/wslg && echo yes || echo no")
-            wslg_dir = result.output.strip() == "yes"
-            linux_dash.add_check("/mnt/wslg exists", wslg_dir, warn=not wslg_dir)
-
-            # xfce4 (used for xrdp sessions — GNOME requires 3D accel)
-            result = await run_wsl(
-                config.distroImportName,
-                "dpkg -l xfce4 2>/dev/null | grep -q '^ii' && echo yes || echo no",
-            )
-            linux_dash.add_check("apt: xfce4", result.output.strip() == "yes")
-
-            # xrdp
-            result = await run_wsl(
-                config.distroImportName,
-                "dpkg -l xrdp 2>/dev/null | grep -q '^ii' && echo yes || echo no",
-            )
-            linux_dash.add_check("apt: xrdp", result.output.strip() == "yes")
-
-            result = await run_wsl(config.distroImportName, "systemctl is-active xrdp 2>/dev/null")
-            xrdp_ok = result.output.strip() == "active"
-            linux_dash.add_check("xrdp service running", xrdp_ok)
-
-            result = await run_wsl(
-                config.distroImportName,
-                f"grep -m1 '^port=' /etc/xrdp/xrdp.ini 2>/dev/null",
-            )
-            port_ok = result.output.strip() == f"port={config.xrdpPort}"
-            linux_dash.add_check(f"xrdp port set to {config.xrdpPort}", port_ok)
-
-            # V: mount
-            dl = config.wslDriveLetter.lower()
-            result = await run_wsl(config.distroImportName, f"test -d /mnt/{dl} && echo yes || echo no")
-            mounted = result.output.strip() == "yes"
-            linux_dash.add_check(f"/mnt/{dl} mounted", mounted, warn=not mounted)
-        else:
-            linux_dash.add_check("Distro not registered - skipping Linux checks", False, warn=True)
-
-        # Summary
-        total_failed = (
-            (win_dash._failed if hasattr(win_dash, "_failed") else 0)
-            + (linux_dash._failed if hasattr(linux_dash, "_failed") else 0)
-        )
+        total_failed = len(result.failed_checks)
         if total_failed == 0:
             status.update("[green]All checks passed![/]")
         else:
             status.update(f"[red]{total_failed} check(s) failed. See details above.[/]")
+
+    def action_go_launcher(self) -> None:
+        from .launcher import LauncherScreen
+        self.app.switch_screen(LauncherScreen(self._config))
+
+    def action_launch_files(self) -> None:
+        from ...shared.launcher import WSL_APP_BUTTONS, launch_wsl_app
+        cmd, display_name = WSL_APP_BUTTONS["btn-launch-files"]
+        try:
+            launch_wsl_app(self._config.distroImportName, cmd)
+            self.app.notify(f"Launched: {display_name}")
+        except Exception as e:
+            self.app.notify(f"Failed to launch: {e}", severity="error")
+
+    def action_launch_pycharm(self) -> None:
+        from ...shared.launcher import WSL_APP_BUTTONS, launch_wsl_app
+        cmd, display_name = WSL_APP_BUTTONS["btn-launch-pycharm"]
+        try:
+            launch_wsl_app(self._config.distroImportName, cmd)
+            self.app.notify(f"Launched: {display_name}")
+        except Exception as e:
+            self.app.notify(f"Failed to launch: {e}", severity="error")
+
+    def action_launch_terminal(self) -> None:
+        from ...shared.launcher import launch_windows_terminal
+        launch_windows_terminal()
+
+    def action_quit(self) -> None:
+        self.app.exit()
 
     def on_click(self, event) -> None:
         from ...shared.launcher import WSL_APP_BUTTONS, launch_windows_terminal, launch_wsl_app

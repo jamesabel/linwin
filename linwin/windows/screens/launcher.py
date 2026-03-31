@@ -16,6 +16,18 @@ from ...shared.subprocess_runner import run_wsl
 class LauncherScreen(Screen):
     """Primary hub shown when Ubuntu is set up. Launch apps or run maintenance."""
 
+    BINDINGS = [
+        ("1", "launch_files", "File Manager"),
+        ("2", "launch_pycharm", "PyCharm"),
+        ("3", "launch_terminal", "Terminal"),
+        ("4", "launch_rdp", "RDP"),
+        ("5", "run_verify", "Verify"),
+        ("6", "run_setup", "Setup"),
+        ("7", "configure", "Configure"),
+        ("8", "view_status", "Status"),
+        ("9", "quit", "Exit"),
+    ]
+
     CSS = """
     #launcher-title {
         text-style: bold;
@@ -94,19 +106,19 @@ class LauncherScreen(Screen):
             with Vertical(id="launch-section"):
                 yield Static("Launch Applications", classes="section-header")
                 with Vertical(classes="button-bar"):
-                    yield Static(">> Launch File Manager <<", id="btn-launch-files", classes="action-link")
-                    yield Static(">> Launch PyCharm <<", id="btn-launch-pycharm", classes="action-link")
-                    yield Static(">> Open Ubuntu Terminal <<", id="btn-launch-terminal", classes="action-link")
-                    yield Static(">> RDP into Ubuntu (XFCE4 Desktop) <<", id="btn-rdp", classes="action-link")
+                    yield Static("\\[1] Launch File Manager", id="btn-launch-files", classes="action-link")
+                    yield Static("\\[2] Launch PyCharm", id="btn-launch-pycharm", classes="action-link")
+                    yield Static("\\[3] Open Ubuntu Terminal", id="btn-launch-terminal", classes="action-link")
+                    yield Static("\\[4] RDP into Ubuntu (XFCE4 Desktop)", id="btn-rdp", classes="action-link")
 
             with Vertical(id="maintenance-section"):
                 yield Static("Maintenance", classes="maint-header")
                 with Vertical(classes="button-bar"):
-                    yield Static(">> Run Verification <<", id="btn-verify", classes="action-link")
-                    yield Static(">> Re-run Setup <<", id="btn-setup", classes="action-link")
-                    yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
-                    yield Static(">> View Status <<", id="btn-status", classes="action-link")
-                    yield Static(">> Exit <<", id="btn-exit", classes="action-link")
+                    yield Static("\\[5] Run Verification", id="btn-verify", classes="action-link")
+                    yield Static("\\[6] Re-run Setup", id="btn-setup", classes="action-link")
+                    yield Static("\\[7] Configure Settings", id="btn-configure", classes="action-link")
+                    yield Static("\\[8] View Status", id="btn-status", classes="action-link")
+                    yield Static("\\[9] Exit", id="btn-exit", classes="action-link")
 
     def on_click(self, event) -> None:
         widget = event.widget
@@ -137,6 +149,49 @@ class LauncherScreen(Screen):
             self._go_to_status()
         elif widget_id == "btn-exit":
             self.app.exit()
+
+    def action_launch_files(self) -> None:
+        from ...shared.launcher import WSL_APP_BUTTONS, launch_wsl_app
+        cmd, display_name = WSL_APP_BUTTONS["btn-launch-files"]
+        try:
+            launch_wsl_app(self._config.distroImportName, cmd)
+            self.app.notify(f"Launched: {display_name}")
+        except Exception as e:
+            self.app.notify(f"Failed to launch: {e}", severity="error")
+
+    def action_launch_pycharm(self) -> None:
+        from ...shared.launcher import WSL_APP_BUTTONS, launch_wsl_app
+        cmd, display_name = WSL_APP_BUTTONS["btn-launch-pycharm"]
+        try:
+            launch_wsl_app(self._config.distroImportName, cmd)
+            self.app.notify(f"Launched: {display_name}")
+        except Exception as e:
+            self.app.notify(f"Failed to launch: {e}", severity="error")
+
+    def action_launch_terminal(self) -> None:
+        from ...shared.launcher import launch_windows_terminal
+        launch_windows_terminal()
+
+    def action_launch_rdp(self) -> None:
+        self._launch_rdp()
+
+    def action_run_verify(self) -> None:
+        from .verify import VerifyScreen
+        self.app.push_screen(VerifyScreen(self._config))
+
+    def action_run_setup(self) -> None:
+        from .setup import SetupScreen
+        self.app.switch_screen(SetupScreen(self._config))
+
+    def action_configure(self) -> None:
+        from .config_editor import ConfigEditorScreen
+        self.app.push_screen(ConfigEditorScreen(self._config))
+
+    def action_view_status(self) -> None:
+        self._go_to_status()
+
+    def action_quit(self) -> None:
+        self.app.exit()
 
     @work
     async def _launch_rdp(self) -> None:
