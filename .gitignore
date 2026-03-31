@@ -5,3 +5,9 @@ __pycache__/
 *.pyc
 .claude/settings.local.json
 .coverage
+
+# pyship build artifacts
+app/
+dist/
+*.nsi
+*.exe
