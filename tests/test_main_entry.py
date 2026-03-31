@@ -12,17 +12,6 @@ class TestWindowsMain:
         from linwin.windows.__main__ import main
         assert callable(main)
 
-    def test_missing_config_exits(self, tmp_path, monkeypatch):
-        """Running from a directory without config.json should exit with error."""
-        result = subprocess.run(
-            [sys.executable, "-m", "linwin.windows"],
-            capture_output=True,
-            text=True,
-            cwd=str(tmp_path),
-            timeout=15,
-        )
-        # Should exit non-zero (either can't find config, or not admin)
-        assert result.returncode != 0 or "config.json" in result.stdout.lower() or "administrator" in result.stdout.lower()
 
 
 @pytest.mark.asyncio

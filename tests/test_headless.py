@@ -138,3 +138,4 @@ class TestFindConfig:
         from linwin.linux.__main__ import find_config
         data = find_config()
         assert "distroName" in data
+        assert isinstance(data, dict)

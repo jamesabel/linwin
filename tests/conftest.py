@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from linwin.shared.config import load_config
 from linwin.shared.subprocess_runner import run_wsl
 
 from .helpers import _run
-
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
 
 # ---------------------------------------------------------------------------
@@ -20,7 +16,7 @@ CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
 @pytest.fixture(scope="module")
 def config():
-    return load_config(CONFIG_PATH)
+    return load_config()
 
 
 @pytest.fixture(scope="module")

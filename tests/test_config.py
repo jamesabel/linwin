@@ -1,24 +1,20 @@
-"""Tests for shared config loading, parsing, validation, and serialization."""
+"""Tests for shared config: dataclasses, pref-backed persistence, validation."""
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from linwin.shared.config import (
+    AppEntry,
     SetupConfig,
     SnapPackage,
     WslConfig,
-    get_config_path,
     load_config,
     save_config,
     validate_config,
     windows_to_wsl_path,
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_JSON = PROJECT_ROOT / "config.json"
 
 
 class TestSetupConfigFromDict:
@@ -66,7 +62,6 @@ class TestSetupConfigFromDict:
 
 class TestSetupConfigRoundTrip:
     def test_to_dict_and_back(self):
-        from linwin.shared.config import AppEntry
         original = SetupConfig(
             distroName="Test",
             wslDriveLetter="Z",
@@ -123,35 +118,55 @@ class TestValidateConfig:
         assert len(errors) >= 3
 
 
-class TestLoadConfig:
-    def test_load_project_config(self):
-        config = load_config(CONFIG_JSON)
-        assert config.distroName == "Ubuntu-22.04"
-        assert isinstance(config.snaps, list)
+class TestPrefPersistence:
+    """Test sqlite-backed load/save with injected db_path."""
 
-    def test_load_missing_file(self, tmp_path):
-        with pytest.raises(FileNotFoundError):
-            load_config(tmp_path / "nonexistent.json")
-
-
-class TestSaveConfig:
     def test_save_and_reload(self, tmp_path):
+        db = tmp_path / "test.db"
         config = SetupConfig(distroName="SaveTest", wslDriveLetter="X")
-        path = tmp_path / "config.json"
-        save_config(config, path)
+        save_config(config, db)
 
-        loaded = load_config(path)
+        loaded = load_config(db)
         assert loaded.distroName == "SaveTest"
         assert loaded.wslDriveLetter == "X"
 
-    def test_saved_json_is_valid(self, tmp_path):
-        config = SetupConfig()
-        path = tmp_path / "config.json"
-        save_config(config, path)
+    def test_defaults_on_empty_db(self, tmp_path):
+        db = tmp_path / "empty.db"
+        config = load_config(db)
+        assert config.distroName == "Ubuntu-22.04"
+        assert config.enableSystemd is True
 
-        data = json.loads(path.read_text())
-        assert "distroName" in data
-        assert "wslconfig" in data
+    def test_round_trip_complex_fields(self, tmp_path):
+        db = tmp_path / "complex.db"
+        config = SetupConfig(
+            wslconfig=WslConfig(memory="32GB", processors=16),
+            optionalApps=[AppEntry("code", "VS Code", "code", "snap", True)],
+            aptPackages=["nautilus", "xfce4"],
+        )
+        save_config(config, db)
+
+        loaded = load_config(db)
+        assert loaded.wslconfig.memory == "32GB"
+        assert loaded.wslconfig.processors == 16
+        assert len(loaded.optionalApps) == 1
+        assert loaded.optionalApps[0].id == "code"
+        assert loaded.aptPackages == ["nautilus", "xfce4"]
+        assert loaded.snaps[0].name == "code"
+
+    def test_legacy_json_migration(self, tmp_path, monkeypatch):
+        """If a legacy config.json exists and DB is empty, migrate it."""
+        db = tmp_path / "migrate.db"
+        legacy = tmp_path / "config.json"
+        legacy.write_text(json.dumps({
+            "distroName": "MigratedDistro",
+            "snaps": [{"name": "pycharm-community", "classic": True}],
+        }))
+        # Point the legacy finder to our tmp_path
+        monkeypatch.chdir(tmp_path)
+        config = load_config(db)
+        assert config.distroName == "MigratedDistro"
+        assert len(config.optionalApps) == 1
+        assert config.optionalApps[0].id == "pycharm-community"
 
 
 class TestWindowsToWslPath:
