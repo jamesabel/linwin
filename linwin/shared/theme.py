@@ -72,6 +72,12 @@ ProgressBar {
     text-style: bold;
 }
 
+/* Info rows */
+.info-row {
+    height: 1;
+    layout: horizontal;
+}
+
 /* Info grid */
 .info-grid {
     height: auto;
