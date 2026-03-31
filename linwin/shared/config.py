@@ -1,4 +1,4 @@
-"""Shared configuration loading, validation, and serialization."""
+"""Shared configuration: dataclasses, app registry, sqlite-backed persistence via pref."""
 
 from __future__ import annotations
 
@@ -6,9 +6,16 @@ import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
+from pref import Pref
+
+
+# ── Data classes ─────────────────────────────────────────────────────
+
 
 @dataclass
 class WslConfig:
+    """Resource limits written to ~/.wslconfig."""
+
     memory: str = "16GB"
     processors: int = 8
     swap: str = "8GB"
@@ -46,6 +53,9 @@ class AppEntry:
     classic: bool = True
 
 
+# ── App registry ─────────────────────────────────────────────────────
+
+
 # Curated registry of well-known optional applications.
 # To add a new app, just append an AppEntry line.
 APP_REGISTRY: list[AppEntry] = [
@@ -73,15 +83,19 @@ APP_REGISTRY: list[AppEntry] = [
 # Index for fast lookup by ID.
 _APP_REGISTRY_MAP: dict[str, AppEntry] = {a.id: a for a in APP_REGISTRY}
 
-
 # Backward-compat alias used by legacy code / tests.
 AVAILABLE_SNAPS: list[tuple[str, str]] = [
     (a.id, a.display_name) for a in APP_REGISTRY if a.install_method == "snap"
 ]
 
 
+# ── SetupConfig ──────────────────────────────────────────────────────
+
+
 @dataclass
 class SetupConfig:
+    """All user-configurable settings for WSL2 Ubuntu setup."""
+
     distroName: str = "Ubuntu-22.04"
     distroImportName: str = "Ubuntu"
     wslInstallPath: str = "V:\\WSL\\Ubuntu"
@@ -89,12 +103,15 @@ class SetupConfig:
     wslconfig: WslConfig = field(default_factory=WslConfig)
     snaps: list[SnapPackage] = field(default_factory=list)
     optionalApps: list[AppEntry] = field(default_factory=list)
-    aptPackages: list[str] = field(default_factory=lambda: ["nautilus", "x11-apps"])
+    aptPackages: list[str] = field(default_factory=lambda: [
+        "nautilus", "x11-apps", "xfce4", "xfce4-terminal", "xrdp", "dbus-x11",
+    ])
     enableSystemd: bool = True
     xrdpPort: int = 3390
 
     @staticmethod
     def from_dict(data: dict) -> SetupConfig:
+        """Deserialize from a plain dict (JSON-style)."""
         wslconfig = WslConfig(**data.get("wslconfig", {}))
 
         # Prefer optionalApps if present; fall back to migrating legacy snaps.
@@ -114,7 +131,6 @@ class SetupConfig:
                     classic=classic,
                 ))
 
-        # Derive snaps from optionalApps for backward-compatible installation.
         snaps = [SnapPackage(a.id, a.classic) for a in optional_apps
                  if a.install_method == "snap"]
 
@@ -126,69 +142,158 @@ class SetupConfig:
             wslconfig=wslconfig,
             snaps=snaps,
             optionalApps=optional_apps,
-            aptPackages=data.get("aptPackages", ["nautilus", "x11-apps"]),
+            aptPackages=data.get("aptPackages", [
+                "nautilus", "x11-apps", "xfce4", "xfce4-terminal", "xrdp", "dbus-x11",
+            ]),
             enableSystemd=data.get("enableSystemd", True),
             xrdpPort=data.get("xrdpPort", 3390),
         )
 
     def to_dict(self) -> dict:
+        """Serialize to a plain dict."""
         d = asdict(self)
-        # Keep snaps derived from optionalApps for backward compat.
         d["snaps"] = [{"name": a.id, "classic": a.classic}
                       for a in self.optionalApps if a.install_method == "snap"]
         return d
 
 
-def get_config_path(script_path: str | None = None) -> Path:
-    """Find config.json by searching several locations.
+# ── SQLite-backed persistence via pref ───────────────────────────────
 
-    Search order:
-    1. Next to the given *script_path* (if provided).
-    2. The current working directory.
-    3. Next to ``sys.executable`` (covers frozen/pyship builds).
-    4. Walking up from this source file (covers dev/repo layouts).
+_APPLICATION_NAME = "linwin"
+_APPLICATION_AUTHOR = "abel"
+
+
+def _config_to_pref_dict(config: SetupConfig) -> dict[str, str | int | bool]:
+    """Convert SetupConfig to flat key-value pairs for pref storage.
+
+    Complex fields (WslConfig, lists) are JSON-encoded strings.
     """
+    return {
+        "distroName": config.distroName,
+        "distroImportName": config.distroImportName,
+        "wslInstallPath": config.wslInstallPath,
+        "wslDriveLetter": config.wslDriveLetter,
+        "wslconfig": json.dumps(asdict(config.wslconfig)),
+        "optionalApps": json.dumps([asdict(a) for a in config.optionalApps]),
+        "aptPackages": json.dumps(config.aptPackages),
+        "enableSystemd": int(config.enableSystemd),
+        "xrdpPort": config.xrdpPort,
+    }
+
+
+def _pref_dict_to_config(data: dict) -> SetupConfig:
+    """Reconstruct SetupConfig from flat pref key-value pairs."""
+    wslconfig_raw = data.get("wslconfig", "{}")
+    wslconfig = WslConfig(**json.loads(wslconfig_raw)) if isinstance(wslconfig_raw, str) else WslConfig()
+
+    optional_raw = data.get("optionalApps", "[]")
+    optional_apps = [AppEntry(**a) for a in json.loads(optional_raw)] if isinstance(optional_raw, str) else []
+
+    apt_raw = data.get("aptPackages", "[]")
+    apt_packages = json.loads(apt_raw) if isinstance(apt_raw, str) else [
+        "nautilus", "x11-apps", "xfce4", "xfce4-terminal", "xrdp", "dbus-x11",
+    ]
+
+    snaps = [SnapPackage(a.id, a.classic) for a in optional_apps if a.install_method == "snap"]
+
+    enable_systemd = data.get("enableSystemd", 1)
+    if isinstance(enable_systemd, int):
+        enable_systemd = bool(enable_systemd)
+
+    return SetupConfig(
+        distroName=data.get("distroName", "Ubuntu-22.04"),
+        distroImportName=data.get("distroImportName", "Ubuntu"),
+        wslInstallPath=data.get("wslInstallPath", "V:\\WSL\\Ubuntu"),
+        wslDriveLetter=data.get("wslDriveLetter", "V"),
+        wslconfig=wslconfig,
+        snaps=snaps,
+        optionalApps=optional_apps,
+        aptPackages=apt_packages,
+        enableSystemd=enable_systemd,
+        xrdpPort=data.get("xrdpPort", 3390),
+    )
+
+
+def load_config(db_path: Path | None = None) -> SetupConfig:
+    """Load configuration from the per-user sqlite database.
+
+    If the database doesn't exist or is empty, returns defaults.
+    If a legacy ``config.json`` exists and the DB is empty, migrates it.
+
+    Args:
+        db_path: Override the DB file path (for testing). If None, uses
+                 the platform default user config directory.
+    """
+    p = _open_pref(db_path)
+    data = dict(p.get_sqlite_dict())
+
+    # Strip pref internal keys.
+    data = {k: v for k, v in data.items() if not k.startswith("_")}
+
+    if data:
+        return _pref_dict_to_config(data)
+
+    # DB is empty — try migrating from legacy config.json.
+    legacy = _find_legacy_config_json()
+    if legacy:
+        with open(legacy, "r") as f:
+            config = SetupConfig.from_dict(json.load(f))
+        save_config(config, db_path)
+        return config
+
+    # No legacy file — return defaults and persist them.
+    config = SetupConfig()
+    save_config(config, db_path)
+    return config
+
+
+def save_config(config: SetupConfig, db_path: Path | None = None) -> None:
+    """Save configuration to the per-user sqlite database.
+
+    Args:
+        db_path: Override the DB file path (for testing).
+    """
+    p = _open_pref(db_path)
+    sd = p.get_sqlite_dict()
+    for key, value in _config_to_pref_dict(config).items():
+        sd[key] = value
+    sd.commit()
+
+
+def _open_pref(db_path: Path | None = None) -> Pref:
+    """Open the pref database, optionally at a custom path."""
+    if db_path is not None:
+        return Pref(_APPLICATION_NAME, _APPLICATION_AUTHOR, file_name=str(db_path.name))
+    return Pref(_APPLICATION_NAME, _APPLICATION_AUTHOR)
+
+
+def get_config_db_path() -> Path:
+    """Return the path to the sqlite config database (for display purposes)."""
+    p = Pref(_APPLICATION_NAME, _APPLICATION_AUTHOR)
+    return p.get_sqlite_path()
+
+
+def _find_legacy_config_json() -> Path | None:
+    """Search for a legacy config.json to migrate from."""
     import sys
 
-    if script_path:
-        p = Path(script_path).resolve().parent / "config.json"
-        if p.exists():
-            return p
+    candidates = [
+        Path.cwd() / "config.json",
+        Path(sys.executable).resolve().parent / "config.json",
+    ]
 
-    # Current working directory
-    cwd_candidate = Path.cwd() / "config.json"
-    if cwd_candidate.exists():
-        return cwd_candidate
-
-    # Next to the Python executable (frozen / pyship builds)
-    exe_candidate = Path(sys.executable).resolve().parent / "config.json"
-    if exe_candidate.exists():
-        return exe_candidate
-
-    # Walk up from this file to find the repo root config.json
     current = Path(__file__).resolve().parent
     for _ in range(5):
-        candidate = current / "config.json"
-        if candidate.exists():
-            return candidate
+        candidates.append(current / "config.json")
         current = current.parent
-    raise FileNotFoundError("config.json not found")
+
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
 
 
-def load_config(path: Path | None = None) -> SetupConfig:
-    if path is None:
-        path = get_config_path()
-    with open(path, "r") as f:
-        data = json.load(f)
-    return SetupConfig.from_dict(data)
-
-
-def save_config(config: SetupConfig, path: Path | None = None) -> None:
-    if path is None:
-        path = get_config_path()
-    with open(path, "w") as f:
-        json.dump(config.to_dict(), f, indent=4)
-        f.write("\n")
+# ── Validation ───────────────────────────────────────────────────────
 
 
 def validate_config(config: SetupConfig) -> list[str]:
@@ -207,14 +312,11 @@ def validate_config(config: SetupConfig) -> list[str]:
     return errors
 
 
-def collect_app_selections(query_one_fn, registry: list[AppEntry] | None = None) -> list[AppEntry]:
-    """Read app checkbox values from the UI and return selected AppEntries.
+# ── UI helpers ───────────────────────────────────────────────────────
 
-    Args:
-        query_one_fn: Callable that resolves a CSS selector to a widget
-                      (typically ``screen.query_one``).
-        registry: App list to iterate; defaults to ``APP_REGISTRY``.
-    """
+
+def collect_app_selections(query_one_fn, registry: list[AppEntry] | None = None) -> list[AppEntry]:
+    """Read app checkbox values from the UI and return selected AppEntries."""
     from .widgets import AsciiCheckbox
 
     if registry is None:

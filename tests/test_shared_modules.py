@@ -285,24 +285,14 @@ class TestConfigHelpers:
         apps = collect_app_selections(query_fn)
         assert len(apps) == 0
 
-    def test_get_config_path_with_script(self, tmp_path):
-        from linwin.shared.config import get_config_path
-        cfg = tmp_path / "config.json"
-        cfg.write_text("{}")
-        path = get_config_path(str(tmp_path / "script.py"))
-        assert path == cfg
-
-    def test_get_config_path_not_found(self, tmp_path, monkeypatch):
-        from linwin.shared.config import get_config_path
-        import linwin.shared.config as cfg_mod
-        # Isolate from real repo: fake __file__, cwd, and sys.executable
-        fake_dir = tmp_path / "a" / "b" / "c" / "d" / "e" / "f"
-        fake_dir.mkdir(parents=True)
-        monkeypatch.setattr(cfg_mod, "__file__", str(fake_dir / "config.py"))
-        monkeypatch.chdir(fake_dir)
-        monkeypatch.setattr("sys.executable", str(fake_dir / "python.exe"))
-        with pytest.raises(FileNotFoundError):
-            get_config_path(str(fake_dir / "script.py"))
+    def test_load_save_config_injectable(self, tmp_path):
+        """Config DB path can be injected for testing."""
+        from linwin.shared.config import load_config, save_config
+        db = tmp_path / "test.db"
+        config = SetupConfig(distroName="Injected")
+        save_config(config, db)
+        loaded = load_config(db)
+        assert loaded.distroName == "Injected"
 
 
 # ── auto_config ──────────────────────────────────────────────────────

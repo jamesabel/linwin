@@ -18,14 +18,9 @@ from ..shared.setup_logging import setup_logging
 
 
 def find_config() -> dict:
-    """Find and load config.json."""
-    project_root = Path(__file__).resolve().parent.parent.parent
-    config_path = project_root / "config.json"
-    if not config_path.exists():
-        print(f"ERROR:config.json not found at {config_path}", flush=True)
-        sys.exit(1)
-    with open(config_path) as f:
-        return json.load(f)
+    """Load config from the per-user sqlite database and return as a dict."""
+    from ..shared.config import load_config
+    return load_config().to_dict()
 
 
 def _run_task(task_id: str, coro, success_msg: str = "") -> bool:

@@ -28,14 +28,15 @@ def main() -> None:
 
     try:
         config = load_config()
-    except FileNotFoundError:
-        log.error("config.json not found")
-        print("ERROR: config.json not found. Please run from the project directory.")
+    except Exception as e:
+        log.error("Failed to load config: %s", e)
+        print(f"ERROR: Failed to load config: {e}")
         sys.exit(1)
 
     log.info("Config loaded: distro=%s drive=%s: path=%s",
              config.distroName, config.wslDriveLetter, config.wslInstallPath)
-    print(f"Logging to {get_log_dir() / 'setup.log'}")
+    from ..shared.config import get_config_db_path
+    log.info("Config DB: %s", get_config_db_path())
 
     app = WindowsSetupApp(config)
     try:
