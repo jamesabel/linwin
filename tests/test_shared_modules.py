@@ -294,18 +294,15 @@ class TestConfigHelpers:
 
     def test_get_config_path_not_found(self, tmp_path, monkeypatch):
         from linwin.shared.config import get_config_path
-        # Monkeypatch __file__ to isolate from real repo
         import linwin.shared.config as cfg_mod
-        original = cfg_mod.__file__
-        # Point __file__ far from any config.json
+        # Isolate from real repo: fake __file__, cwd, and sys.executable
         fake_dir = tmp_path / "a" / "b" / "c" / "d" / "e" / "f"
         fake_dir.mkdir(parents=True)
         monkeypatch.setattr(cfg_mod, "__file__", str(fake_dir / "config.py"))
-        try:
-            with pytest.raises(FileNotFoundError):
-                get_config_path(str(fake_dir / "script.py"))
-        finally:
-            monkeypatch.setattr(cfg_mod, "__file__", original)
+        monkeypatch.chdir(fake_dir)
+        monkeypatch.setattr("sys.executable", str(fake_dir / "python.exe"))
+        with pytest.raises(FileNotFoundError):
+            get_config_path(str(fake_dir / "script.py"))
 
 
 # ── auto_config ──────────────────────────────────────────────────────
