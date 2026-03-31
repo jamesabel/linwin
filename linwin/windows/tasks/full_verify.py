@@ -139,8 +139,10 @@ async def run_full_verification(
         wslg_dir = await check_wslg_dir(wsl_run)
         await _check("/mnt/wslg exists", wslg_dir, warn=not wslg_dir, category="linux")
 
-        await _check("apt: xfce4", await check_apt_package(wsl_run, "xfce4"), category="linux")
-        await _check("apt: xrdp", await check_apt_package(wsl_run, "xrdp"), category="linux")
+        # Check critical xrdp packages only if not already in aptPackages
+        for critical_pkg in ("xfce4", "xrdp"):
+            if critical_pkg not in config.aptPackages:
+                await _check(f"apt: {critical_pkg}", await check_apt_package(wsl_run, critical_pkg), category="linux")
 
         r = await run_wsl(config.distroImportName, "systemctl is-active xrdp 2>/dev/null")
         await _check("xrdp service running", r.output.strip() == "active", category="linux")
