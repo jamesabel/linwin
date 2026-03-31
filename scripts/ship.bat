@@ -29,7 +29,16 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: Copy config.json into the frozen app directory (next to python.exe)
+:: so the app can find it at runtime.
+for /d %%d in (app\linwin\linwin_*) do (
+    if exist "%%d\python.exe" (
+        echo Copying config.json to %%d
+        copy /y config.json "%%d\" >nul
+    )
+)
+
 echo.
 echo === Build complete ===
-echo Output is in the _pyship directory.
+echo Output is in the app\linwin directory.
 pause

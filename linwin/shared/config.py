@@ -140,11 +140,31 @@ class SetupConfig:
 
 
 def get_config_path(script_path: str | None = None) -> Path:
-    """Find config.json relative to the given script or the package root."""
+    """Find config.json by searching several locations.
+
+    Search order:
+    1. Next to the given *script_path* (if provided).
+    2. The current working directory.
+    3. Next to ``sys.executable`` (covers frozen/pyship builds).
+    4. Walking up from this source file (covers dev/repo layouts).
+    """
+    import sys
+
     if script_path:
         p = Path(script_path).resolve().parent / "config.json"
         if p.exists():
             return p
+
+    # Current working directory
+    cwd_candidate = Path.cwd() / "config.json"
+    if cwd_candidate.exists():
+        return cwd_candidate
+
+    # Next to the Python executable (frozen / pyship builds)
+    exe_candidate = Path(sys.executable).resolve().parent / "config.json"
+    if exe_candidate.exists():
+        return exe_candidate
+
     # Walk up from this file to find the repo root config.json
     current = Path(__file__).resolve().parent
     for _ in range(5):
