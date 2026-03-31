@@ -18,6 +18,10 @@ from ...shared.widgets import VerifyDashboard
 class VerifyScreen(Screen):
     """Linux verification dashboard."""
 
+    BINDINGS = [
+        ("escape", "quit_app", "Exit"),
+    ]
+
     CSS = """
     #verify-status {
         padding: 1 2;
@@ -45,7 +49,7 @@ class VerifyScreen(Screen):
             yield VerifyDashboard(title="Linux Verification", id="linux-verify")
             yield Static("Running verification...", id="verify-status")
             with Horizontal(classes="button-bar"):
-                yield Static(">> Exit <<", id="btn-exit", classes="action-link")
+                yield Static("\\[Esc] Exit", id="btn-exit", classes="action-link")
 
     def on_mount(self) -> None:
         self.run_verification()
@@ -99,6 +103,9 @@ class VerifyScreen(Screen):
             status.update("[green]All checks passed![/]")
         else:
             status.update("[yellow]Some checks need attention. See above.[/]")
+
+    def action_quit_app(self) -> None:
+        self.app.exit()
 
     def on_click(self, event) -> None:
         widget = event.widget

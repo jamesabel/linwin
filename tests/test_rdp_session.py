@@ -12,7 +12,7 @@ import pytest
 
 from linwin.shared.subprocess_runner import run_command, run_wsl
 
-from conftest import _run, _cert_flag, _collect_diagnostics
+from .helpers import _run, _cert_flag, _collect_diagnostics
 
 TEST_USER = "_rdptest"
 TEST_PASS = "WslRdpTest2024x"

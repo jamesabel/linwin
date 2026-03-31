@@ -20,7 +20,7 @@ import pytest
 
 from linwin.shared.subprocess_runner import run_command, run_wsl
 
-from conftest import _run, _cert_flag, _recv_exact, _collect_diagnostics
+from .helpers import _run, _cert_flag, _recv_exact, _collect_diagnostics
 
 TEMP_PASSWORD = "TempRdpDesktopTest2024x"
 

@@ -70,6 +70,13 @@ class DetailModal(ModalScreen):
 class StatusScreen(Screen):
     """Status screen showing health check results, system info, and config summary."""
 
+    BINDINGS = [
+        ("1", "start_setup", "Setup"),
+        ("2", "configure", "Configure"),
+        ("3", "go_launcher", "Launcher"),
+        ("escape", "quit_app", "Quit"),
+    ]
+
     CSS = """
     #health-box {
         border: ascii $primary;
@@ -190,10 +197,10 @@ class StatusScreen(Screen):
 
             with Vertical(classes="button-bar"):
                 if self._health.ready:
-                    yield Static(">> Go to Launcher <<", id="btn-launcher", classes="action-link")
-                yield Static(">> Run Setup <<", id="btn-start", classes="action-link")
-                yield Static(">> Configure Settings <<", id="btn-configure", classes="action-link")
-                yield Static(">> Quit (Escape) <<", id="btn-quit", classes="action-link")
+                    yield Static("\\[3] Go to Launcher", id="btn-launcher", classes="action-link")
+                yield Static("\\[1] Run Setup", id="btn-start", classes="action-link")
+                yield Static("\\[2] Configure Settings", id="btn-configure", classes="action-link")
+                yield Static("\\[Esc] Quit", id="btn-quit", classes="action-link")
 
     def on_mount(self) -> None:
         self.detect_system_info()
@@ -243,6 +250,21 @@ class StatusScreen(Screen):
                     await row.mount(link)
                 else:
                     await row.mount(Label(f"{result.message}  [red]FAIL[/]"))
+
+    def action_start_setup(self) -> None:
+        from .setup import SetupScreen
+        self.app.switch_screen(SetupScreen(self._config))
+
+    def action_configure(self) -> None:
+        from .config_editor import ConfigEditorScreen
+        self.app.push_screen(ConfigEditorScreen(self._config))
+
+    def action_go_launcher(self) -> None:
+        from .launcher import LauncherScreen
+        self.app.switch_screen(LauncherScreen(self._config))
+
+    def action_quit_app(self) -> None:
+        self.app.exit()
 
     def on_click(self, event) -> None:
         widget = event.widget

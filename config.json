@@ -4,27 +4,14 @@
     "wslInstallPath": "V:\\WSL\\Ubuntu",
     "wslDriveLetter": "V",
     "wslconfig": {
-        "memory": "16GB",
-        "processors": 8,
-        "swap": "8GB",
+        "memory": "15GB",
+        "processors": 10,
+        "swap": "7GB",
         "swapFile": "V:\\WSL\\swap.vhdx",
         "guiApplications": true,
-        "defaultVhdSize": "200GB"
+        "defaultVhdSize": "512GB"
     },
-    "snaps": [
-        {
-            "name": "code",
-            "classic": true
-        },
-        {
-            "name": "intellij-idea-community",
-            "classic": true
-        },
-        {
-            "name": "pycharm-community",
-            "classic": true
-        }
-    ],
+    "snaps": [],
     "aptPackages": [
         "nautilus",
         "x11-apps",

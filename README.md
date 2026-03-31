@@ -11,7 +11,7 @@ Automated TUI (Text User Interface) to install Ubuntu on Windows 11 via WSL2, wi
 ## Quick Start
 
 ```powershell
-setup_wsl.bat
+scripts\setup_wsl.bat
 ```
 
 This launches an interactive terminal UI that:
@@ -73,8 +73,9 @@ Edit `config.json` before running, or use the built-in Configure Settings screen
 
 | Path | Description |
 |------|-------------|
-| `setup_wsl.bat` | Entry point -- installs dependencies, then launches the TUI |
 | `run.bat` | Quick launch -- runs the TUI without dependency installation |
+| `scripts/setup_wsl.bat` | Full setup -- installs uv, Python, dependencies, then launches the TUI |
+| `scripts/test.bat` | Run the test suite |
 | `linwin/windows/` | Windows TUI package -- guides entire setup with live progress |
 | `linwin/linux/` | Linux TUI package for WSL-side setup (also supports `--headless`) |
 | `linwin/shared/` | Shared widgets, config, theme, and subprocess utilities |

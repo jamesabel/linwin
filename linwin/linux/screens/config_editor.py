@@ -15,6 +15,7 @@ class ConfigEditorScreen(Screen):
     """Edit Linux-relevant config.json values."""
 
     BINDINGS = [
+        ("1", "save", "Save"),
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -52,8 +53,12 @@ class ConfigEditorScreen(Screen):
                 yield AsciiCheckbox("Enable Systemd", value=c.enableSystemd, id="chk-systemd")
 
             with Vertical(classes="button-bar"):
-                yield Static(">> Save & Back <<", id="btn-save", classes="action-link")
-                yield Static(">> Cancel (Escape) <<", id="btn-cancel", classes="action-link")
+                yield Static("\\[1] Save & Back", id="btn-save", classes="action-link")
+                yield Static("\\[Esc] Cancel", id="btn-cancel", classes="action-link")
+
+    def action_save(self) -> None:
+        self._save_config()
+        self.app.pop_screen()
 
     def action_cancel(self) -> None:
         self.app.pop_screen()

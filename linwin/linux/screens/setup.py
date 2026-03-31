@@ -32,6 +32,10 @@ def build_task_list(config: SetupConfig) -> list[tuple[str, str]]:
 class SetupScreen(Screen):
     """Run all Linux setup tasks with live progress."""
 
+    BINDINGS = [
+        ("1", "run_verify", "Verify"),
+    ]
+
     CSS = """
     #setup-status {
         padding: 1 2;
@@ -53,7 +57,7 @@ class SetupScreen(Screen):
             yield LogPanel(id="setup-log")
             yield Static("", id="setup-status")
             with Horizontal(classes="button-bar"):
-                yield Static(">> Run Verification <<", id="btn-verify", classes="action-link hidden")
+                yield Static("\\[1] Run Verification", id="btn-verify", classes="action-link hidden")
 
     def on_mount(self) -> None:
         self.run_setup()
@@ -158,6 +162,10 @@ class SetupScreen(Screen):
         log.write_success("\nSetup complete!")
         status.update("[green]Setup complete! Run verification to confirm.[/]")
         self.query_one("#btn-verify").remove_class("hidden")
+
+    def action_run_verify(self) -> None:
+        from .verify import VerifyScreen
+        self.app.switch_screen(VerifyScreen(self._config))
 
     def on_click(self, event) -> None:
         widget = event.widget

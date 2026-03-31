@@ -4,6 +4,9 @@ setlocal
 :: Switch to UTF-8 so Textual's Unicode characters render correctly
 chcp 65001 >nul 2>&1
 
+:: Run from the project root (one level up from scripts/)
+cd /d "%~dp0\.."
+
 echo === WSL Ubuntu GNOME Setup ===
 echo.
 

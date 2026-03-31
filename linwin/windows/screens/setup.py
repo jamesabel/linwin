@@ -51,6 +51,12 @@ RESUME_AFTER_REBOOT = "update_wsl"
 class SetupScreen(Screen):
     """Single setup screen that runs all tasks, pausing for reboot only when needed."""
 
+    BINDINGS = [
+        ("1", "reboot", "Reboot"),
+        ("2", "verify", "Verify"),
+        ("3", "launcher", "Launcher"),
+    ]
+
     CSS = """
     #setup-status {
         padding: 1 2;
@@ -80,9 +86,9 @@ class SetupScreen(Screen):
             yield LogPanel(id="setup-log")
             yield Static("", id="setup-status")
             with Horizontal(classes="button-bar"):
-                yield Static(">> Reboot Now <<", id="btn-reboot", classes="action-link hidden")
-                yield Static(">> Run Verification <<", id="btn-verify", classes="action-link hidden")
-                yield Static(">> Go to Launcher <<", id="btn-launcher", classes="action-link hidden")
+                yield Static("\\[1] Reboot Now", id="btn-reboot", classes="action-link hidden")
+                yield Static("\\[2] Run Verification", id="btn-verify", classes="action-link hidden")
+                yield Static("\\[3] Go to Launcher", id="btn-launcher", classes="action-link hidden")
 
     def on_mount(self) -> None:
         self.run_setup()
@@ -390,6 +396,25 @@ class SetupScreen(Screen):
         # Show verify and launcher buttons
         self.query_one("#btn-verify").remove_class("hidden")
         self.query_one("#btn-launcher").remove_class("hidden")
+
+    def action_reboot(self) -> None:
+        btn = self.query_one("#btn-reboot")
+        if "hidden" not in btn.classes:
+            import subprocess
+            subprocess.Popen(["shutdown", "/r", "/t", "5"])
+            self.app.exit()
+
+    def action_verify(self) -> None:
+        btn = self.query_one("#btn-verify")
+        if "hidden" not in btn.classes:
+            from .verify import VerifyScreen
+            self.app.switch_screen(VerifyScreen(self._config))
+
+    def action_launcher(self) -> None:
+        btn = self.query_one("#btn-launcher")
+        if "hidden" not in btn.classes:
+            from .launcher import LauncherScreen
+            self.app.switch_screen(LauncherScreen(self._config))
 
     def on_click(self, event) -> None:
         widget = event.widget
