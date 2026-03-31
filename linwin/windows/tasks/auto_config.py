@@ -13,6 +13,8 @@ from .drive_scan import DriveCandidate, scan_drives
 
 @dataclass
 class SystemProfile:
+    """Detected system hardware profile used for auto-configuration."""
+
     ram_gb: int
     cpu_count: int
     best_drive: DriveCandidate | None

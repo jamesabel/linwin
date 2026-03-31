@@ -10,10 +10,10 @@ Usage:
 import argparse
 import asyncio
 import json
-import logging
 import sys
 from pathlib import Path
 
+from ..shared.headless_protocol import emit_error, emit_log, emit_task
 from ..shared.setup_logging import setup_logging
 
 
@@ -28,44 +28,24 @@ def find_config() -> dict:
         return json.load(f)
 
 
-# ---------- Headless mode (no textual import) ----------
-
-_log = logging.getLogger("wslsetup")
-
-
-def headless_task(task_id: str, status: str) -> None:
-    _log.info("TASK %-25s -> %s", task_id, status)
-    print(f"TASK:{task_id}:{status}", flush=True)
-
-
-def headless_log(msg: str) -> None:
-    _log.info("LOG: %s", msg)
-    print(f"LOG:{msg}", flush=True)
-
-
-def headless_error(msg: str) -> None:
-    _log.error("ERROR: %s", msg)
-    print(f"ERROR:{msg}", flush=True)
-
-
 def _run_task(task_id: str, coro, success_msg: str = "") -> bool:
     """Run an async task with structured headless output. Returns True on success."""
-    headless_task(task_id, "running")
+    emit_task(task_id, "running")
     result = asyncio.run(coro)
     if hasattr(result, "ok"):
         if getattr(result, "skipped", False):
-            headless_task(task_id, "done")
-            headless_log(result.message)
+            emit_task(task_id, "done")
+            emit_log(result.message)
         elif result.ok:
-            headless_task(task_id, "done")
-            headless_log(success_msg or result.message)
+            emit_task(task_id, "done")
+            emit_log(success_msg or result.message)
         else:
-            headless_task(task_id, "failed")
-            headless_error(result.message)
+            emit_task(task_id, "failed")
+            emit_error(result.message)
             return False
     else:
         # Boolean or other non-TaskResult return value
-        headless_task(task_id, "done")
+        emit_task(task_id, "done")
     return True
 
 
@@ -97,20 +77,20 @@ def headless_install_packages(config: dict) -> int:
             exit_code = 1
 
     # Setup snapd
-    headless_task("setup_snapd", "running")
+    emit_task("setup_snapd", "running")
     systemd_ok = asyncio.run(snaps.check_systemd_running())
     if not systemd_ok:
-        headless_task("setup_snapd", "failed")
-        headless_error("systemd not running. Snaps require systemd + WSL restart.")
+        emit_task("setup_snapd", "failed")
+        emit_error("systemd not running. Snaps require systemd + WSL restart.")
         exit_code = 1
     else:
         result = asyncio.run(snaps.ensure_snapd())
         if result.ok:
-            headless_task("setup_snapd", "done")
-            headless_log(result.message)
+            emit_task("setup_snapd", "done")
+            emit_log(result.message)
         else:
-            headless_task("setup_snapd", "failed")
-            headless_error(result.message)
+            emit_task("setup_snapd", "failed")
+            emit_error(result.message)
             exit_code = 1
 
         # Install snaps
@@ -123,12 +103,12 @@ def headless_install_packages(config: dict) -> int:
                 exit_code = 1
 
     # Verify WSLg
-    headless_task("verify_wslg", "running")
+    emit_task("verify_wslg", "running")
     wslg_result = asyncio.run(wslg.verify_wslg())
-    headless_log(f"DISPLAY={wslg_result.display_value or '(not set)'}")
-    headless_log(f"/mnt/wslg: {'exists' if wslg_result.wslg_dir_exists else 'not found'}")
+    emit_log(f"DISPLAY={wslg_result.display_value or '(not set)'}")
+    emit_log(f"/mnt/wslg: {'exists' if wslg_result.wslg_dir_exists else 'not found'}")
     wslg_ok = wslg_result.display_set and wslg_result.wslg_dir_exists
-    headless_task("verify_wslg", "done" if wslg_ok else "failed")
+    emit_task("verify_wslg", "done" if wslg_ok else "failed")
 
     return exit_code
 
@@ -186,7 +166,7 @@ def main() -> None:
         except Exception:
             import traceback
             tb = traceback.format_exc()
-            headless_error(tb)
+            emit_error(tb)
             log.error("Unhandled exception in headless mode:\n%s", tb)
             sys.exit(1)
     else:

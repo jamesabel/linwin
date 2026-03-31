@@ -111,6 +111,31 @@ def validate_config(config: SetupConfig) -> list[str]:
     return errors
 
 
+def collect_snap_selections(query_one_fn, available_snaps: list[tuple[str, str]] | None = None) -> list[SnapPackage]:
+    """Read snap checkbox values from the UI and return selected SnapPackages.
+
+    Args:
+        query_one_fn: Callable that resolves a CSS selector to a widget
+                      (typically ``screen.query_one``).
+        available_snaps: Snap list to iterate; defaults to ``AVAILABLE_SNAPS``.
+    """
+    from .widgets import AsciiCheckbox
+
+    if available_snaps is None:
+        available_snaps = AVAILABLE_SNAPS
+    snaps = []
+    for snap_id, _ in available_snaps:
+        cb = query_one_fn(f"#snap-{snap_id}", AsciiCheckbox)
+        if cb.value:
+            snaps.append(SnapPackage(snap_id, True))
+    return snaps
+
+
+def parse_apt_input(raw: str) -> list[str]:
+    """Parse a comma-separated apt package string into a clean list."""
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
 def windows_to_wsl_path(win_path: str) -> str:
     """Convert C:\\foo\\bar to /mnt/c/foo/bar."""
     path = win_path.replace("\\", "/")

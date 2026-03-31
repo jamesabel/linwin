@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.screen import Screen
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Static
 from textual import work
 
+from ...shared.base_app import ClickDispatchScreen
 from ...shared.config import SetupConfig
-from ...shared.launcher import WSL_APP_BUTTONS, launch_rdp, launch_windows_terminal, launch_wsl_app
+from ...shared.launcher import launch_rdp, launch_windows_terminal, notify_launch
 from ...shared.subprocess_runner import run_wsl
 
 
-class LauncherScreen(Screen):
+class LauncherScreen(ClickDispatchScreen):
     """Primary hub shown when Ubuntu is set up. Launch apps or run maintenance."""
 
     BINDINGS = [
@@ -27,6 +27,18 @@ class LauncherScreen(Screen):
         ("8", "view_status", "Status"),
         ("9", "quit", "Exit"),
     ]
+
+    CLICK_MAP = {
+        "btn-launch-files": "launch_files",
+        "btn-launch-pycharm": "launch_pycharm",
+        "btn-launch-terminal": "launch_terminal",
+        "btn-rdp": "launch_rdp",
+        "btn-verify": "run_verify",
+        "btn-setup": "run_setup",
+        "btn-configure": "configure",
+        "btn-status": "view_status",
+        "btn-exit": "quit",
+    }
 
     CSS = """
     #launcher-title {
@@ -120,56 +132,13 @@ class LauncherScreen(Screen):
                     yield Static("\\[8] View Status", id="btn-status", classes="action-link")
                     yield Static("\\[9] Exit", id="btn-exit", classes="action-link")
 
-    def on_click(self, event) -> None:
-        widget = event.widget
-        widget_id = getattr(widget, "id", None)
-        if not widget_id:
-            return
-        if widget_id in WSL_APP_BUTTONS:
-            cmd, display_name = WSL_APP_BUTTONS[widget_id]
-            try:
-                launch_wsl_app(self._config.distroImportName, cmd)
-                self.app.notify(f"Launched: {display_name}")
-            except Exception as e:
-                self.app.notify(f"Failed to launch: {e}", severity="error")
-        elif widget_id == "btn-launch-terminal":
-            launch_windows_terminal()
-        elif widget_id == "btn-rdp":
-            self._launch_rdp()
-        elif widget_id == "btn-verify":
-            from .verify import VerifyScreen
-            self.app.push_screen(VerifyScreen(self._config))
-        elif widget_id == "btn-setup":
-            from .setup import SetupScreen
-            self.app.switch_screen(SetupScreen(self._config))
-        elif widget_id == "btn-configure":
-            from .config_editor import ConfigEditorScreen
-            self.app.push_screen(ConfigEditorScreen(self._config))
-        elif widget_id == "btn-status":
-            self._go_to_status()
-        elif widget_id == "btn-exit":
-            self.app.exit()
-
     def action_launch_files(self) -> None:
-        from ...shared.launcher import WSL_APP_BUTTONS, launch_wsl_app
-        cmd, display_name = WSL_APP_BUTTONS["btn-launch-files"]
-        try:
-            launch_wsl_app(self._config.distroImportName, cmd)
-            self.app.notify(f"Launched: {display_name}")
-        except Exception as e:
-            self.app.notify(f"Failed to launch: {e}", severity="error")
+        notify_launch(self.app, "btn-launch-files", self._config.distroImportName)
 
     def action_launch_pycharm(self) -> None:
-        from ...shared.launcher import WSL_APP_BUTTONS, launch_wsl_app
-        cmd, display_name = WSL_APP_BUTTONS["btn-launch-pycharm"]
-        try:
-            launch_wsl_app(self._config.distroImportName, cmd)
-            self.app.notify(f"Launched: {display_name}")
-        except Exception as e:
-            self.app.notify(f"Failed to launch: {e}", severity="error")
+        notify_launch(self.app, "btn-launch-pycharm", self._config.distroImportName)
 
     def action_launch_terminal(self) -> None:
-        from ...shared.launcher import launch_windows_terminal
         launch_windows_terminal()
 
     def action_launch_rdp(self) -> None:
@@ -211,6 +180,7 @@ class LauncherScreen(Screen):
 
     @work
     async def _go_to_status(self) -> None:
+        """Run health check and navigate to the status screen."""
         from ..tasks.health_check import run_health_check
         health = await run_health_check(self._config)
         from .status import StatusScreen

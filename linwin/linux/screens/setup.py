@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.screen import Screen
+from ...shared.base_app import ClickDispatchScreen
 from textual.widgets import Static
 from textual import work
 
@@ -14,7 +14,11 @@ from ..tasks import apt, snaps, systemd, wslg
 
 
 def build_task_list(config: SetupConfig) -> list[tuple[str, str]]:
-    """Build the task list dynamically from config."""
+    """Build the task list dynamically from config.
+
+    Returns a list of ``(task_id, display_name)`` tuples reflecting
+    the packages and options enabled in the current configuration.
+    """
     tasks = []
     if config.enableSystemd:
         tasks.append(("enable_systemd", "Enable systemd"))
@@ -29,12 +33,16 @@ def build_task_list(config: SetupConfig) -> list[tuple[str, str]]:
     return tasks
 
 
-class SetupScreen(Screen):
+class SetupScreen(ClickDispatchScreen):
     """Run all Linux setup tasks with live progress."""
 
     BINDINGS = [
         ("1", "run_verify", "Verify"),
     ]
+
+    CLICK_MAP = {
+        "btn-verify": "run_verify",
+    }
 
     CSS = """
     #setup-status {
@@ -166,10 +174,3 @@ class SetupScreen(Screen):
     def action_run_verify(self) -> None:
         from .verify import VerifyScreen
         self.app.switch_screen(VerifyScreen(self._config))
-
-    def on_click(self, event) -> None:
-        widget = event.widget
-        widget_id = getattr(widget, "id", None)
-        if widget_id == "btn-verify":
-            from .verify import VerifyScreen
-            self.app.switch_screen(VerifyScreen(self._config))

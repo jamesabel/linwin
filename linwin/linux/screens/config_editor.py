@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.screen import Screen
-from textual.widgets import Input, Label, Static
+from textual.containers import Vertical, VerticalScroll
+from textual.widgets import Input, Static
 
-from ...shared.config import AVAILABLE_SNAPS, SetupConfig, SnapPackage, save_config
+from ...shared.base_app import ClickDispatchScreen
+from ...shared.config import AVAILABLE_SNAPS, SetupConfig, collect_snap_selections, parse_apt_input, save_config
 from ...shared.widgets import AsciiCheckbox, field_row
 
 
-class ConfigEditorScreen(Screen):
+class ConfigEditorScreen(ClickDispatchScreen):
     """Edit Linux-relevant config.json values."""
 
     BINDINGS = [
         ("1", "save", "Save"),
         ("escape", "cancel", "Cancel"),
     ]
+
+    CLICK_MAP = {
+        "btn-save": "save",
+        "btn-cancel": "cancel",
+    }
 
     CSS = """
     .editor-section {
@@ -63,31 +68,11 @@ class ConfigEditorScreen(Screen):
     def action_cancel(self) -> None:
         self.app.pop_screen()
 
-    def on_click(self, event) -> None:
-        widget = event.widget
-        widget_id = getattr(widget, "id", None)
-        if not widget_id:
-            return
-        if widget_id == "btn-save":
-            self._save_config()
-            self.app.pop_screen()
-        elif widget_id == "btn-cancel":
-            self.app.pop_screen()
-
     def _save_config(self) -> None:
         c = self._config
 
-        # Snaps
-        snaps = []
-        for snap_id, _ in AVAILABLE_SNAPS:
-            cb = self.query_one(f"#snap-{snap_id}", AsciiCheckbox)
-            if cb.value:
-                snaps.append(SnapPackage(snap_id, True))
-        c.snaps = snaps
-
-        # Apt packages
-        apt_str = self.query_one("#input-apt-packages", Input).value
-        c.aptPackages = [p.strip() for p in apt_str.split(",") if p.strip()]
+        c.snaps = collect_snap_selections(self.query_one)
+        c.aptPackages = parse_apt_input(self.query_one("#input-apt-packages", Input).value)
 
         # Systemd
         c.enableSystemd = self.query_one("#chk-systemd", AsciiCheckbox).value

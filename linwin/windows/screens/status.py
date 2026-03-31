@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.screen import ModalScreen, Screen
+from textual.screen import ModalScreen
 from textual.widgets import Label, Static
+
+from ...shared.base_app import ClickDispatchScreen
 from textual import work
 
 from ...shared.config import SetupConfig
+from ...shared.widgets import info_row
 from ..tasks import validators
 from ..tasks.health_check import HealthStatus
 
@@ -67,7 +70,7 @@ class DetailModal(ModalScreen):
         self.dismiss()
 
 
-class StatusScreen(Screen):
+class StatusScreen(ClickDispatchScreen):
     """Status screen showing health check results, system info, and config summary."""
 
     BINDINGS = [
@@ -76,6 +79,13 @@ class StatusScreen(Screen):
         ("3", "go_launcher", "Launcher"),
         ("escape", "quit_app", "Quit"),
     ]
+
+    CLICK_MAP = {
+        "btn-start": "start_setup",
+        "btn-configure": "configure",
+        "btn-launcher": "go_launcher",
+        "btn-quit": "quit_app",
+    }
 
     CSS = """
     #health-box {
@@ -111,11 +121,11 @@ class StatusScreen(Screen):
         margin: 1 2;
         height: auto;
     }
-    #config-box .config-row {
+    #config-box .info-row {
         height: 1;
         layout: horizontal;
     }
-    #config-box .config-row Label:first-child {
+    #config-box .info-row Label:first-child {
         width: 24;
         text-style: bold;
     }
@@ -184,16 +194,16 @@ class StatusScreen(Screen):
                 yield Static("Current Configuration", classes="section-header")
                 c = self._config
                 wc = c.wslconfig
-                yield _config_row("Distro:", c.distroName)
-                yield _config_row("Import Name:", c.distroImportName)
-                yield _config_row("Install Path:", c.wslInstallPath)
-                yield _config_row("Memory:", wc.memory)
-                yield _config_row("Processors:", str(wc.processors))
-                yield _config_row("Swap:", wc.swap)
-                yield _config_row("VHD Size:", wc.defaultVhdSize)
+                yield info_row("Distro:", c.distroName)
+                yield info_row("Import Name:", c.distroImportName)
+                yield info_row("Install Path:", c.wslInstallPath)
+                yield info_row("Memory:", wc.memory)
+                yield info_row("Processors:", str(wc.processors))
+                yield info_row("Swap:", wc.swap)
+                yield info_row("VHD Size:", wc.defaultVhdSize)
                 snap_names = ", ".join(s.name for s in c.snaps)
-                yield _config_row("Snaps:", snap_names)
-                yield _config_row("Apt Packages:", ", ".join(c.aptPackages))
+                yield info_row("Snaps:", snap_names)
+                yield info_row("Apt Packages:", ", ".join(c.aptPackages))
 
             with Vertical(classes="button-bar"):
                 if self._health.ready:
@@ -267,28 +277,10 @@ class StatusScreen(Screen):
         self.app.exit()
 
     def on_click(self, event) -> None:
-        widget = event.widget
-        widget_id = getattr(widget, "id", None)
-        if not widget_id:
-            return
-        if widget_id == "btn-start":
-            from .setup import SetupScreen
-            self.app.switch_screen(SetupScreen(self._config))
-        elif widget_id == "btn-configure":
-            from .config_editor import ConfigEditorScreen
-            self.app.push_screen(ConfigEditorScreen(self._config))
-        elif widget_id == "btn-launcher":
-            from .launcher import LauncherScreen
-            self.app.switch_screen(LauncherScreen(self._config))
-        elif widget_id == "btn-quit":
-            self.app.exit()
-        elif widget_id in self._fail_details:
+        """Extend base dispatch to handle detail-link clicks."""
+        widget_id = getattr(event.widget, "id", None)
+        if widget_id and widget_id in self._fail_details:
             title, detail = self._fail_details[widget_id]
             self.app.push_screen(DetailModal(title, detail))
-
-
-def _config_row(label: str, value: str) -> Horizontal:
-    row = Horizontal(classes="config-row")
-    row.compose_add_child(Label(label))
-    row.compose_add_child(Label(value))
-    return row
+            return
+        super().on_click(event)

@@ -14,6 +14,21 @@ WSL_APP_BUTTONS: dict[str, tuple[str, str]] = {
 }
 
 
+def notify_launch(app, button_id: str, distro: str) -> None:
+    """Launch a WSL app by button ID and notify the user.
+
+    Shared helper used by any screen that has app-launch buttons.
+    Looks up the command in ``WSL_APP_BUTTONS``, launches it, and
+    posts a success or error notification.
+    """
+    cmd, display_name = WSL_APP_BUTTONS[button_id]
+    try:
+        launch_wsl_app(distro, cmd)
+        app.notify(f"Launched: {display_name}")
+    except Exception as e:
+        app.notify(f"Failed to launch: {e}", severity="error")
+
+
 def launch_wsl_app(distro: str, *args: str) -> None:
     """Launch a GUI app inside WSL (non-blocking, fire-and-forget).
 

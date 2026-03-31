@@ -1,0 +1,1 @@
+"""linwin — TUI setup tool for WSL2 Ubuntu with WSLg GUI and xrdp desktop."""
