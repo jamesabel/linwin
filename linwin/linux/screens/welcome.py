@@ -6,15 +6,16 @@ import os
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.screen import Screen
 from textual.widgets import Label, Static
 from textual import work
 
+from ...shared.base_app import ClickDispatchScreen
 from ...shared.config import SetupConfig
 from ...shared.subprocess_runner import run_local
+from ...shared.widgets import info_row
 
 
-class WelcomeScreen(Screen):
+class WelcomeScreen(ClickDispatchScreen):
     """Welcome screen with Linux system detection."""
 
     BINDINGS = [
@@ -22,6 +23,12 @@ class WelcomeScreen(Screen):
         ("2", "start_setup", "Start Setup"),
         ("escape", "quit_app", "Quit"),
     ]
+
+    CLICK_MAP = {
+        "btn-configure": "configure",
+        "btn-start": "start_setup",
+        "btn-quit": "quit_app",
+    }
 
     CSS = """
     #welcome-info {
@@ -80,10 +87,10 @@ class WelcomeScreen(Screen):
             with Vertical(id="welcome-config"):
                 yield Static("Current Configuration", classes="section-header")
                 c = self._config
-                yield _info_row("Apt Packages:", ", ".join(c.aptPackages))
+                yield info_row("Apt Packages:", ", ".join(c.aptPackages))
                 snap_names = ", ".join(s.name for s in c.snaps)
-                yield _info_row("Snaps:", snap_names)
-                yield _info_row("Enable Systemd:", "Yes" if c.enableSystemd else "No")
+                yield info_row("Snaps:", snap_names)
+                yield info_row("Enable Systemd:", "Yes" if c.enableSystemd else "No")
 
             with Vertical(classes="button-bar"):
                 yield Static("\\[1] Configure Settings", id="btn-configure", classes="action-link")
@@ -157,23 +164,3 @@ class WelcomeScreen(Screen):
     def action_quit_app(self) -> None:
         self.app.exit()
 
-    def on_click(self, event) -> None:
-        widget = event.widget
-        widget_id = getattr(widget, "id", None)
-        if not widget_id:
-            return
-        if widget_id == "btn-configure":
-            from .config_editor import ConfigEditorScreen
-            self.app.push_screen(ConfigEditorScreen(self._config))
-        elif widget_id == "btn-start":
-            from .setup import SetupScreen
-            self.app.push_screen(SetupScreen(self._config))
-        elif widget_id == "btn-quit":
-            self.app.exit()
-
-
-def _info_row(label: str, value: str) -> Horizontal:
-    row = Horizontal(classes="info-row")
-    row.compose_add_child(Label(label))
-    row.compose_add_child(Label(value))
-    return row

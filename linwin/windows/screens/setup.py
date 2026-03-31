@@ -8,7 +8,7 @@ from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.screen import Screen
+from ...shared.base_app import ClickDispatchScreen
 from textual.widgets import Static
 from textual import work
 
@@ -48,7 +48,7 @@ SETUP_TASKS = [
 RESUME_AFTER_REBOOT = "update_wsl"
 
 
-class SetupScreen(Screen):
+class SetupScreen(ClickDispatchScreen):
     """Single setup screen that runs all tasks, pausing for reboot only when needed."""
 
     BINDINGS = [
@@ -56,6 +56,12 @@ class SetupScreen(Screen):
         ("2", "verify", "Verify"),
         ("3", "launcher", "Launcher"),
     ]
+
+    CLICK_MAP = {
+        "btn-reboot": "reboot",
+        "btn-verify": "verify",
+        "btn-launcher": "launcher",
+    }
 
     CSS = """
     #setup-status {
@@ -416,18 +422,3 @@ class SetupScreen(Screen):
             from .launcher import LauncherScreen
             self.app.switch_screen(LauncherScreen(self._config))
 
-    def on_click(self, event) -> None:
-        widget = event.widget
-        widget_id = getattr(widget, "id", None)
-        if not widget_id:
-            return
-        if widget_id == "btn-reboot":
-            import subprocess
-            subprocess.Popen(["shutdown", "/r", "/t", "5"])
-            self.app.exit()
-        elif widget_id == "btn-verify":
-            from .verify import VerifyScreen
-            self.app.switch_screen(VerifyScreen(self._config))
-        elif widget_id == "btn-launcher":
-            from .launcher import LauncherScreen
-            self.app.switch_screen(LauncherScreen(self._config))

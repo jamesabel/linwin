@@ -4,16 +4,27 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Awaitable, Callable
 
 from ...shared.config import SetupConfig
 from ...shared.subprocess_runner import run_powershell, run_wsl
+from ...shared.verify_checks import (
+    check_apt_package,
+    check_drive_mounted,
+    check_snap_package,
+    check_snapd,
+    check_systemd,
+    check_wslg_dir,
+)
 from . import features, validators, wsl_install
 from .wsl_config import check_wslconfig_exists
 
 
 @dataclass
 class VerifyCheckItem:
+    """A single verification check result with name, status, and optional detail."""
+
     name: str
     passed: bool
     detail: str = ""
@@ -23,6 +34,8 @@ class VerifyCheckItem:
 
 @dataclass
 class VerifyResult:
+    """Aggregated result of all verification checks."""
+
     checks: list[VerifyCheckItem] = field(default_factory=list)
 
     @property
@@ -104,64 +117,46 @@ async def run_full_verification(
     # --- Linux checks ---
 
     if registered:
-        r = await run_wsl(config.distroImportName, "ps -p 1 -o comm= 2>/dev/null")
-        await _check( "systemd is PID 1", r.output.strip() == "systemd",
-             r.output.strip(), category="linux")
+        # Create a runner that executes commands inside the WSL distro
+        wsl_run = partial(run_wsl, config.distroImportName)
 
-        r = await run_wsl(config.distroImportName, "systemctl is-active snapd 2>/dev/null")
-        await _check( "snapd service running", r.output.strip() == "active", category="linux")
+        is_systemd, init_name = await check_systemd(wsl_run)
+        await _check("systemd is PID 1", is_systemd, init_name, category="linux")
+
+        await _check("snapd service running", await check_snapd(wsl_run), category="linux")
 
         for pkg in config.aptPackages:
-            r = await run_wsl(
-                config.distroImportName,
-                f"dpkg -l {pkg} 2>/dev/null | grep -q '^ii' && echo yes || echo no",
-            )
-            await _check( f"apt: {pkg}", r.output.strip() == "yes", category="linux")
+            await _check(f"apt: {pkg}", await check_apt_package(wsl_run, pkg), category="linux")
 
         for snap in config.snaps:
-            r = await run_wsl(
-                config.distroImportName,
-                f"snap list {snap.name} 2>/dev/null && echo yes || echo no",
-            )
-            await _check( f"snap: {snap.name}", "yes" in r.output, category="linux")
+            await _check(f"snap: {snap.name}", await check_snap_package(wsl_run, snap.name), category="linux")
 
         r = await run_wsl(config.distroImportName, "echo $DISPLAY")
         has_display = bool(r.output.strip())
-        await _check( "DISPLAY set", has_display, r.output.strip(),
+        await _check("DISPLAY set", has_display, r.output.strip(),
              warn=not has_display, category="linux")
 
-        r = await run_wsl(config.distroImportName, "test -d /mnt/wslg && echo yes || echo no")
-        wslg_dir = r.output.strip() == "yes"
-        await _check( "/mnt/wslg exists", wslg_dir, warn=not wslg_dir, category="linux")
+        wslg_dir = await check_wslg_dir(wsl_run)
+        await _check("/mnt/wslg exists", wslg_dir, warn=not wslg_dir, category="linux")
 
-        r = await run_wsl(
-            config.distroImportName,
-            "dpkg -l xfce4 2>/dev/null | grep -q '^ii' && echo yes || echo no",
-        )
-        await _check( "apt: xfce4", r.output.strip() == "yes", category="linux")
-
-        r = await run_wsl(
-            config.distroImportName,
-            "dpkg -l xrdp 2>/dev/null | grep -q '^ii' && echo yes || echo no",
-        )
-        await _check( "apt: xrdp", r.output.strip() == "yes", category="linux")
+        await _check("apt: xfce4", await check_apt_package(wsl_run, "xfce4"), category="linux")
+        await _check("apt: xrdp", await check_apt_package(wsl_run, "xrdp"), category="linux")
 
         r = await run_wsl(config.distroImportName, "systemctl is-active xrdp 2>/dev/null")
-        await _check( "xrdp service running", r.output.strip() == "active", category="linux")
+        await _check("xrdp service running", r.output.strip() == "active", category="linux")
 
         r = await run_wsl(
             config.distroImportName,
             "grep -m1 '^port=' /etc/xrdp/xrdp.ini 2>/dev/null",
         )
-        await _check( f"xrdp port set to {config.xrdpPort}",
+        await _check(f"xrdp port set to {config.xrdpPort}",
              r.output.strip() == f"port={config.xrdpPort}", category="linux")
 
         dl = config.wslDriveLetter.lower()
-        r = await run_wsl(config.distroImportName, f"test -d /mnt/{dl} && echo yes || echo no")
-        mounted = r.output.strip() == "yes"
-        await _check( f"/mnt/{dl} mounted", mounted, warn=not mounted, category="linux")
+        mounted = await check_drive_mounted(wsl_run, config.wslDriveLetter)
+        await _check(f"/mnt/{dl} mounted", mounted, warn=not mounted, category="linux")
     else:
-        await _check( "Distro not registered - skipping Linux checks", False,
+        await _check("Distro not registered - skipping Linux checks", False,
              warn=True, category="linux")
 
     return result

@@ -1,11 +1,43 @@
-"""Base Textual app with shared bindings and actions."""
+"""Base Textual app and screen with shared bindings and click dispatch."""
 
 from __future__ import annotations
 
 from textual.app import App
+from textual.screen import Screen
 
 from .config import SetupConfig
 from .theme import SHARED_CSS
+
+
+class ClickDispatchScreen(Screen):
+    """Base screen that dispatches on_click to action methods via a widget-ID map.
+
+    Subclasses define ``CLICK_MAP``, a dict mapping widget IDs to action
+    method names.  Clicks on mapped widgets are dispatched automatically,
+    eliminating the need to duplicate action logic inside ``on_click``.
+
+    Example::
+
+        CLICK_MAP = {
+            "btn-save": "save",
+            "btn-cancel": "cancel",
+        }
+
+    A click on ``#btn-save`` calls ``self.action_save()``.
+    """
+
+    CLICK_MAP: dict[str, str] = {}
+
+    def on_click(self, event) -> None:
+        """Dispatch click events to action methods using CLICK_MAP."""
+        widget_id = getattr(event.widget, "id", None)
+        if not widget_id:
+            return
+        action_name = self.CLICK_MAP.get(widget_id)
+        if action_name:
+            method = getattr(self, f"action_{action_name}", None)
+            if method:
+                method()
 
 
 class BaseSetupApp(App):

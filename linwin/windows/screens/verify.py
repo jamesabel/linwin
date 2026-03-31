@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.screen import Screen
 from textual.widgets import Static
 from textual import work
 
+from ...shared.base_app import ClickDispatchScreen
 from ...shared.config import SetupConfig
+from ...shared.launcher import launch_windows_terminal, notify_launch
 from ...shared.widgets import VerifyDashboard
 from ..tasks.full_verify import run_full_verification
 
 
-class VerifyScreen(Screen):
+class VerifyScreen(ClickDispatchScreen):
     """Verification dashboard showing PASS/FAIL/WARN for all checks."""
 
     BINDINGS = [
@@ -23,6 +24,14 @@ class VerifyScreen(Screen):
         ("4", "launch_terminal", "Terminal"),
         ("5", "quit", "Exit"),
     ]
+
+    CLICK_MAP = {
+        "btn-launcher": "go_launcher",
+        "btn-launch-files": "launch_files",
+        "btn-launch-pycharm": "launch_pycharm",
+        "btn-launch-terminal": "launch_terminal",
+        "btn-exit": "quit",
+    }
 
     CSS = """
     #verify-status {
@@ -72,6 +81,7 @@ class VerifyScreen(Screen):
 
     @work(exclusive=True)
     async def run_verification(self) -> None:
+        """Run full verification and populate both dashboards."""
         win_dash = self.query_one("#win-verify", VerifyDashboard)
         linux_dash = self.query_one("#linux-verify", VerifyDashboard)
         status = self.query_one("#verify-status", Static)
@@ -93,46 +103,13 @@ class VerifyScreen(Screen):
         self.app.switch_screen(LauncherScreen(self._config))
 
     def action_launch_files(self) -> None:
-        from ...shared.launcher import WSL_APP_BUTTONS, launch_wsl_app
-        cmd, display_name = WSL_APP_BUTTONS["btn-launch-files"]
-        try:
-            launch_wsl_app(self._config.distroImportName, cmd)
-            self.app.notify(f"Launched: {display_name}")
-        except Exception as e:
-            self.app.notify(f"Failed to launch: {e}", severity="error")
+        notify_launch(self.app, "btn-launch-files", self._config.distroImportName)
 
     def action_launch_pycharm(self) -> None:
-        from ...shared.launcher import WSL_APP_BUTTONS, launch_wsl_app
-        cmd, display_name = WSL_APP_BUTTONS["btn-launch-pycharm"]
-        try:
-            launch_wsl_app(self._config.distroImportName, cmd)
-            self.app.notify(f"Launched: {display_name}")
-        except Exception as e:
-            self.app.notify(f"Failed to launch: {e}", severity="error")
+        notify_launch(self.app, "btn-launch-pycharm", self._config.distroImportName)
 
     def action_launch_terminal(self) -> None:
-        from ...shared.launcher import launch_windows_terminal
         launch_windows_terminal()
 
     def action_quit(self) -> None:
         self.app.exit()
-
-    def on_click(self, event) -> None:
-        from ...shared.launcher import WSL_APP_BUTTONS, launch_windows_terminal, launch_wsl_app
-
-        widget = event.widget
-        widget_id = getattr(widget, "id", None)
-        if widget_id in WSL_APP_BUTTONS:
-            cmd, display_name = WSL_APP_BUTTONS[widget_id]
-            try:
-                launch_wsl_app(self._config.distroImportName, cmd)
-                self.app.notify(f"Launched: {display_name}")
-            except Exception as e:
-                self.app.notify(f"Failed to launch: {e}", severity="error")
-        elif widget_id == "btn-launch-terminal":
-            launch_windows_terminal()
-        elif widget_id == "btn-launcher":
-            from .launcher import LauncherScreen
-            self.app.switch_screen(LauncherScreen(self._config))
-        elif widget_id == "btn-exit":
-            self.app.exit()

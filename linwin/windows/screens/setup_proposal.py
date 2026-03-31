@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
-from textual.screen import Screen
 from textual.widgets import Static
 
+from ...shared.base_app import ClickDispatchScreen
 from ...shared.config import SetupConfig, save_config
 from ...shared.widgets import info_row
 from ..tasks.auto_config import SystemProfile
 from ..tasks.full_verify import VerifyResult
 
 
-class SetupProposalScreen(Screen):
+class SetupProposalScreen(ClickDispatchScreen):
     """Shows verification failures, detected system info, and proposed config."""
 
     BINDINGS = [
@@ -22,6 +22,12 @@ class SetupProposalScreen(Screen):
         ("3", "cancel", "Cancel"),
         ("escape", "cancel", "Cancel"),
     ]
+
+    CLICK_MAP = {
+        "btn-accept": "accept",
+        "btn-edit": "edit",
+        "btn-cancel": "cancel",
+    }
 
     CSS = """
     #proposal-title {
@@ -110,18 +116,6 @@ class SetupProposalScreen(Screen):
                 yield Static("\\[1] Accept & Run Setup", id="btn-accept", classes="action-link")
                 yield Static("\\[2] Edit Configuration", id="btn-edit", classes="action-link")
                 yield Static("\\[3] Cancel", id="btn-cancel", classes="action-link")
-
-    def on_click(self, event) -> None:
-        widget_id = getattr(event.widget, "id", None)
-        if widget_id == "btn-accept":
-            save_config(self._config)
-            from .setup import SetupScreen
-            self.app.switch_screen(SetupScreen(self._config))
-        elif widget_id == "btn-edit":
-            from .config_editor import ConfigEditorScreen
-            self.app.push_screen(ConfigEditorScreen(self._config), callback=self._on_editor_close)
-        elif widget_id == "btn-cancel":
-            self.app.exit()
 
     def action_accept(self) -> None:
         save_config(self._config)

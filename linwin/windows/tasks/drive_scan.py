@@ -11,6 +11,8 @@ MIN_FREE_GB = 20.0
 
 @dataclass
 class DriveCandidate:
+    """A fixed drive on the system, ranked as a candidate for WSL storage."""
+
     letter: str
     free_gb: float
     total_gb: float
@@ -32,13 +34,18 @@ class DriveCandidate:
 
 @dataclass
 class DriveScanResult:
+    """Result of a system drive scan with ranked candidates and excluded drives."""
+
     candidates: list[DriveCandidate] = field(default_factory=list)
     excluded: list[tuple[str, str]] = field(default_factory=list)
     error: str = ""
 
 
 def score_drive(d: DriveCandidate) -> int:
-    """Score a drive candidate. Higher is better."""
+    """Score a drive candidate for WSL storage suitability. Higher is better.
+
+    Prefers NVMe > SSD > HDD, more free space, and non-system (non-C:) drives.
+    """
     score = 0
     # Media type: NVMe > SSD > HDD > Unknown
     if d.bus_type == "NVMe":
@@ -56,7 +63,11 @@ def score_drive(d: DriveCandidate) -> int:
 
 
 def parse_drive_line(line: str) -> DriveCandidate | None:
-    """Parse one pipe-delimited line from the PowerShell scan."""
+    """Parse one pipe-delimited line from the PowerShell drive scan.
+
+    Expected format: ``letter|free_gb|total_gb|media_type|bus_type|label``.
+    Returns None if the line cannot be parsed.
+    """
     parts = line.strip().split("|")
     if len(parts) < 6:
         return None
