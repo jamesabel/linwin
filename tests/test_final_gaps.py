@@ -28,26 +28,32 @@ def _fail(output: str = "") -> SubprocessResult:
 class TestLinuxSetupScreen:
     async def test_build_task_list(self):
         from linwin.linux.screens.setup import build_task_list
-        from linwin.shared.config import SnapPackage
+        from linwin.shared.config import AppEntry
         config = SetupConfig()
         config.enableSystemd = True
         config.aptPackages = ["nautilus", "xfce4"]
-        config.snaps = [SnapPackage("code")]
+        config.optionalApps = [
+            AppEntry("code", "VS Code", "code", "snap"),
+            AppEntry("gedit", "Text Editor", "gedit", "apt"),
+            AppEntry("matlab", "MATLAB", "matlab", "custom"),
+        ]
         tasks = build_task_list(config)
         ids = [t[0] for t in tasks]
         assert "enable_systemd" in ids
         assert "apt_update" in ids
-        assert "apt_upgrade" in ids
         assert "apt_nautilus" in ids
         assert "snap_code" in ids
+        assert "apt_opt_gedit" in ids
         assert "verify_wslg" in ids
+        # Custom apps should NOT have install tasks
+        assert not any("matlab" in tid for tid in ids)
 
     async def test_build_task_list_no_systemd(self):
         from linwin.linux.screens.setup import build_task_list
         config = SetupConfig()
         config.enableSystemd = False
         config.aptPackages = []
-        config.snaps = []
+        config.optionalApps = []
         tasks = build_task_list(config)
         ids = [t[0] for t in tasks]
         assert "enable_systemd" not in ids

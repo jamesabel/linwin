@@ -11,7 +11,32 @@
         "guiApplications": true,
         "defaultVhdSize": "512GB"
     },
-    "snaps": [],
+    "snaps": [
+        {
+            "name": "pycharm-community",
+            "classic": true
+        },
+        {
+            "name": "firefox",
+            "classic": false
+        }
+    ],
+    "optionalApps": [
+        {
+            "id": "pycharm-community",
+            "display_name": "PyCharm Community",
+            "command": "pycharm-community",
+            "install_method": "snap",
+            "classic": true
+        },
+        {
+            "id": "firefox",
+            "display_name": "Firefox",
+            "command": "firefox",
+            "install_method": "snap",
+            "classic": false
+        }
+    ],
     "aptPackages": [
         "nautilus",
         "x11-apps",

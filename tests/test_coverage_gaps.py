@@ -259,7 +259,6 @@ class TestLauncherActions:
 
             with patch("linwin.windows.screens.launcher.notify_launch"):
                 screen.action_launch_files()
-                screen.action_launch_pycharm()
 
             with patch("linwin.windows.screens.launcher.launch_windows_terminal"):
                 screen.action_launch_terminal()
@@ -287,7 +286,6 @@ class TestVerifyActions:
 
                 with patch("linwin.windows.screens.verify.notify_launch"):
                     screen.action_launch_files()
-                    screen.action_launch_pycharm()
 
                 with patch("linwin.windows.screens.verify.launch_windows_terminal"):
                     screen.action_launch_terminal()

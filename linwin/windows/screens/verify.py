@@ -2,82 +2,102 @@
 
 from __future__ import annotations
 
+import string
+
 from textual.app import ComposeResult
-from textual.containers import Horizontal, VerticalScroll
-from textual.widgets import Static
+from textual.containers import Vertical, VerticalScroll
+from textual.widgets import OptionList, Static
 from textual import work
 
 from ...shared.base_app import ClickDispatchScreen
-from ...shared.config import SetupConfig
+from ...shared.config import AppEntry, SetupConfig
 from ...shared.launcher import launch_windows_terminal, notify_launch
 from ...shared.widgets import VerifyDashboard
 from ..tasks.full_verify import run_full_verification
 
 
+def _app_action_name(app: AppEntry) -> str:
+    """Derive a Textual action name from an AppEntry id."""
+    return f"launch_app_{app.id.replace('-', '_')}"
+
+
 class VerifyScreen(ClickDispatchScreen):
-    """Verification dashboard showing PASS/FAIL/WARN for all checks."""
+    """Verification dashboard showing PASS/FAIL/WARN for all checks.
 
-    BINDINGS = [
-        ("1", "go_launcher", "Launcher"),
-        ("2", "launch_files", "Files"),
-        ("3", "launch_pycharm", "PyCharm"),
-        ("4", "launch_terminal", "Terminal"),
-        ("5", "quit", "Exit"),
-    ]
-
-    CLICK_MAP = {
-        "btn-launcher": "go_launcher",
-        "btn-launch-files": "launch_files",
-        "btn-launch-pycharm": "launch_pycharm",
-        "btn-launch-terminal": "launch_terminal",
-        "btn-exit": "quit",
-    }
+    Uses OptionList widgets for Tab-focusable, Enter-to-select navigation.
+    """
 
     CSS = """
     #verify-status {
         padding: 1 2;
         text-style: bold;
     }
-    .button-bar {
-        height: auto;
+    #actions-section {
+        border: ascii $primary;
         padding: 1 2;
-        align-horizontal: center;
+        margin: 1 2;
+        height: auto;
     }
-    .action-link {
-        margin: 0 2;
-        padding: 0 2;
+    .section-header {
         text-style: bold;
-        color: $text;
+        color: $primary;
+        margin-bottom: 1;
     }
-    #btn-launch-files {
-        color: $accent;
-    }
-    #btn-launch-terminal {
-        color: $accent;
-    }
-    #btn-launcher {
-        color: $accent;
+    OptionList {
+        height: auto;
+        border: none;
+        padding: 0;
+        background: $surface;
     }
     """
 
     def __init__(self, config: SetupConfig, **kwargs) -> None:
         super().__init__(**kwargs)
         self._config = config
+        self._optional_apps = config.optionalApps
+
+        # Build action items: launcher, file manager, optional apps, terminal, exit
+        self._action_items: list[tuple[str, str]] = [
+            ("go_launcher", "Back to Launcher"),
+            ("launch_files", "Launch File Manager"),
+        ]
+        for app in self._optional_apps:
+            self._action_items.append((_app_action_name(app), f"Launch {app.display_name}"))
+        self._action_items.append(("launch_terminal", "Open Ubuntu Terminal"))
+        self._action_items.append(("quit", "Exit"))
+
+    def on_mount(self) -> None:
+        """Bind alpha keys for actions."""
+        for i, (action, label) in enumerate(self._action_items):
+            if i < 26:
+                key = string.ascii_lowercase[i]
+                self._bindings.bind(key, action, label)
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
             yield VerifyDashboard(title="Windows Checks", id="win-verify")
             yield VerifyDashboard(title="Linux Checks", id="linux-verify")
             yield Static("Running verification...", id="verify-status")
-            with Horizontal(classes="button-bar"):
-                yield Static("\\[1] Back to Launcher", id="btn-launcher", classes="action-link")
-                yield Static("\\[2] Launch File Manager", id="btn-launch-files", classes="action-link")
-                yield Static("\\[3] Launch PyCharm", id="btn-launch-pycharm", classes="action-link")
-                yield Static("\\[4] Open Ubuntu Terminal", id="btn-launch-terminal", classes="action-link")
-                yield Static("\\[5] Exit", id="btn-exit", classes="action-link")
+            with Vertical(id="actions-section"):
+                yield Static("Actions", classes="section-header")
+                options = []
+                for i, (_, label) in enumerate(self._action_items):
+                    key = string.ascii_lowercase[i] if i < 26 else " "
+                    options.append(f"[{key}] {label}")
+                yield OptionList(*options, id="verify-actions")
 
-    def on_mount(self) -> None:
+    def on_screen_show(self) -> None:
+        """Run verification when first shown."""
         self.run_verification()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Dispatch Enter-key selection from the OptionList."""
+        idx = event.option_index
+        if idx < len(self._action_items):
+            action_name = self._action_items[idx][0]
+            method = getattr(self, f"action_{action_name}", None)
+            if method:
+                method()
 
     @work(exclusive=True)
     async def run_verification(self) -> None:
@@ -98,18 +118,29 @@ class VerifyScreen(ClickDispatchScreen):
         else:
             status.update(f"[red]{total_failed} check(s) failed. See details above.[/]")
 
+    # ── Actions ──────────────────────────────────────────────────────
+
     def action_go_launcher(self) -> None:
         from .launcher import LauncherScreen
         self.app.switch_screen(LauncherScreen(self._config))
 
     def action_launch_files(self) -> None:
-        notify_launch(self.app, "btn-launch-files", self._config.distroImportName)
-
-    def action_launch_pycharm(self) -> None:
-        notify_launch(self.app, "btn-launch-pycharm", self._config.distroImportName)
+        notify_launch(self.app, "nautilus", "File Manager", self._config.distroImportName)
 
     def action_launch_terminal(self) -> None:
         launch_windows_terminal()
 
     def action_quit(self) -> None:
         self.app.exit()
+
+    def __getattr__(self, name: str):
+        """Handle action_launch_app_<id> calls for optional apps."""
+        if name.startswith("action_launch_app_"):
+            app_id = name[len("action_launch_app_"):].replace("_", "-")
+            for entry in self._optional_apps:
+                if entry.id == app_id:
+                    return lambda: notify_launch(
+                        self.app, entry.command, entry.display_name,
+                        self._config.distroImportName,
+                    )
+        raise AttributeError(name)

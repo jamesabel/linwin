@@ -80,8 +80,11 @@ class VerifyScreen(ClickDispatchScreen):
         for pkg in config.aptPackages:
             dash.add_check(f"apt: {pkg}", await check_apt_package(run_local, pkg))
 
-        for snap in config.snaps:
-            dash.add_check(f"snap: {snap.name}", await check_snap_package(run_local, snap.name))
+        for app in config.optionalApps:
+            if app.install_method == "snap":
+                dash.add_check(f"snap: {app.id}", await check_snap_package(run_local, app.id))
+            elif app.install_method == "apt":
+                dash.add_check(f"apt: {app.id}", await check_apt_package(run_local, app.id))
 
         display_ok, display_val = await check_display_set()
         dash.add_check("DISPLAY set", display_ok, display_val, warn=not display_ok)
