@@ -65,25 +65,6 @@ def _get_wsl_ip(distro: str = "Ubuntu") -> str:
     return ""
 
 
-def ensure_portproxy(port: int, distro: str = "Ubuntu") -> None:
-    """Ensure a netsh portproxy rule forwards 127.0.0.1:<port> to the WSL VM.
-
-    The Hyper-V firewall blocks direct connections to the WSL2 NAT IP
-    on recent Windows builds. A port proxy sidesteps this by forwarding
-    through the loopback adapter, which is always allowed.
-    """
-    wsl_ip = _get_wsl_ip(distro)
-    if not wsl_ip:
-        return
-    # netsh portproxy add is idempotent — re-adding updates the rule.
-    subprocess.run(
-        [
-            "netsh.exe", "interface", "portproxy", "add", "v4tov4",
-            f"listenport={port}", "listenaddress=127.0.0.1",
-            f"connectport={port}", f"connectaddress={wsl_ip}",
-        ],
-        capture_output=True,
-    )
 
 
 _keepalive_proc: subprocess.Popen | None = None
@@ -113,10 +94,11 @@ def ensure_wsl_keepalive(distro: str = "Ubuntu") -> None:
 def launch_rdp(port: int = 3390, distro: str = "Ubuntu") -> None:
     """Open Remote Desktop Connection to the WSL xrdp server.
 
-    Ensures a port proxy is in place so 127.0.0.1:<port> reaches xrdp
-    inside the WSL2 VM, starts a WSL keepalive so the VM doesn't shut
-    down when the TUI exits, then launches mstsc.
+    Connects directly to the WSL2 VM's IP address — no admin-requiring
+    port proxy needed.  Starts a keepalive so the VM doesn't shut down
+    when the TUI exits.
     """
-    ensure_portproxy(port, distro)
     ensure_wsl_keepalive(distro)
-    subprocess.Popen(["mstsc.exe", f"/v:127.0.0.1:{port}"])
+    wsl_ip = _get_wsl_ip(distro)
+    target = f"{wsl_ip}:{port}" if wsl_ip else f"127.0.0.1:{port}"
+    subprocess.Popen(["mstsc.exe", f"/v:{target}"])

@@ -198,11 +198,18 @@ class TestWindowsMainModule:
         with patch("ctypes.windll.shell32.IsUserAnAdmin", side_effect=RuntimeError):
             assert check_admin() is False
 
-    def test_relaunch_as_admin(self):
-        from linwin.windows.app import relaunch_as_admin
-        with patch("ctypes.windll.shell32.ShellExecuteW") as mock_shell:
-            relaunch_as_admin()
-            mock_shell.assert_called_once()
+    def test_run_elevated(self):
+        from linwin.windows.app import run_elevated
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            assert run_elevated("echo test") is True
+            mock_run.assert_called_once()
+
+    def test_run_elevated_failure(self):
+        from linwin.windows.app import run_elevated
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1)
+            assert run_elevated("echo test") is False
 
 
 # ── Linux __main__ remaining branches ────────────────────────────────

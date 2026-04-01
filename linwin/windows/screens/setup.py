@@ -197,6 +197,7 @@ class SetupScreen(ClickDispatchScreen):
                 log.write_info("WSL feature already enabled.")
             else:
                 tasks.set_status("enable_wsl", "running")
+                log.write_info("Enabling WSL feature requires administrator access...")
                 log.write_command("Enabling WSL feature via DISM...")
                 fr = await features.enable_wsl_feature(on_line)
                 tasks.set_status("enable_wsl", "done" if fr.ok else "failed")
@@ -217,6 +218,7 @@ class SetupScreen(ClickDispatchScreen):
                 log.write_info("Virtual Machine Platform already enabled.")
             else:
                 tasks.set_status("enable_vm", "running")
+                log.write_info("Enabling VM Platform requires administrator access...")
                 log.write_command("Enabling Virtual Machine Platform via DISM...")
                 fr = await features.enable_vm_platform(on_line)
                 tasks.set_status("enable_vm", "done" if fr.ok else "failed")
@@ -388,9 +390,6 @@ class SetupScreen(ClickDispatchScreen):
                 log.write_error("Linux configure-xrdp failed")
                 status.update("[yellow]xrdp configuration had issues. Run verification to check.[/]")
             else:
-                # Set up port proxy so 127.0.0.1:<port> reaches xrdp in WSL
-                from ...shared.launcher import ensure_portproxy
-                ensure_portproxy(config.xrdpPort, config.distroImportName)
                 log.write_success("All tasks complete!")
                 status.update("[green]Setup complete! Run verification to confirm.[/]")
 

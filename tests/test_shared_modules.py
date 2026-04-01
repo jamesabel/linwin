@@ -200,11 +200,14 @@ class TestLauncher:
 
     def test_launch_rdp(self):
         from linwin.shared.launcher import launch_rdp
-        with patch("linwin.shared.launcher.ensure_portproxy"), \
-             patch("linwin.shared.launcher.ensure_wsl_keepalive"), \
+        with patch("linwin.shared.launcher.ensure_wsl_keepalive"), \
+             patch("linwin.shared.launcher._get_wsl_ip", return_value="172.20.0.1"), \
              patch("linwin.shared.launcher.subprocess.Popen") as mock_popen:
             launch_rdp(3390, "Ubuntu")
             mock_popen.assert_called_once()
+            # Should connect to WSL IP directly, not 127.0.0.1
+            call_args = mock_popen.call_args[0][0]
+            assert "172.20.0.1:3390" in call_args[1]
 
     def test_ensure_wsl_keepalive_starts(self):
         from linwin.shared import launcher
@@ -224,19 +227,15 @@ class TestLauncher:
             mock_popen.assert_not_called()
         launcher._keepalive_proc = None  # Clean up
 
-    def test_ensure_portproxy(self):
-        from linwin.shared.launcher import ensure_portproxy
-        with patch("linwin.shared.launcher._get_wsl_ip", return_value="172.20.0.1"), \
-             patch("linwin.shared.launcher.subprocess.run") as mock_run:
-            ensure_portproxy(3390, "Ubuntu")
-            mock_run.assert_called_once()
-
-    def test_ensure_portproxy_no_ip(self):
-        from linwin.shared.launcher import ensure_portproxy
-        with patch("linwin.shared.launcher._get_wsl_ip", return_value=""), \
-             patch("linwin.shared.launcher.subprocess.run") as mock_run:
-            ensure_portproxy(3390, "Ubuntu")
-            mock_run.assert_not_called()
+    def test_launch_rdp_no_ip_fallback(self):
+        from linwin.shared.launcher import launch_rdp
+        with patch("linwin.shared.launcher.ensure_wsl_keepalive"), \
+             patch("linwin.shared.launcher._get_wsl_ip", return_value=""), \
+             patch("linwin.shared.launcher.subprocess.Popen") as mock_popen:
+            launch_rdp(3390, "Ubuntu")
+            # Falls back to 127.0.0.1 when WSL IP unavailable
+            call_args = mock_popen.call_args[0][0]
+            assert "127.0.0.1:3390" in call_args[1]
 
     def test_get_wsl_ip_success(self):
         from linwin.shared.launcher import _get_wsl_ip

@@ -18,9 +18,18 @@ from ..shared.setup_logging import setup_logging
 
 
 def find_config() -> dict:
-    """Load config from the per-user sqlite database and return as a dict."""
-    from ..shared.config import load_config
-    return load_config().to_dict()
+    """Load config from the pref DB, or return defaults if unavailable.
+
+    Inside WSL the ``pref`` package may not be installed, so fall back
+    to defaults.
+    """
+    try:
+        from ..shared.config import load_config
+        return load_config().to_dict()
+    except ImportError:
+        # pref not installed (running inside WSL) — use defaults.
+        from ..shared.config import SetupConfig
+        return SetupConfig().to_dict()
 
 
 def _run_task(task_id: str, coro, success_msg: str = "") -> bool:

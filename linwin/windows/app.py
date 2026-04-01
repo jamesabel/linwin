@@ -144,18 +144,25 @@ def check_admin() -> bool:
         return False
 
 
-def relaunch_as_admin() -> None:
-    """Re-launch this module with admin privileges via UAC."""
-    import ctypes
-    import os
-    import sys
-    # Use -m to preserve relative imports; sys.argv may be a __main__.py
-    # path which fails when run directly.
-    args = "-m linwin.windows"
-    # Pass the current working directory so the elevated process can find
-    # config.json and the linwin package (ShellExecuteW defaults to System32).
-    cwd = os.getcwd()
-    ctypes.windll.shell32.ShellExecuteW(
-        None, "runas", sys.executable,
-        args, cwd, 1,  # SW_SHOWNORMAL
+def run_elevated(command: str) -> bool:
+    """Run a single shell command with UAC elevation.
+
+    Uses PowerShell ``Start-Process -Verb RunAs`` to elevate just the
+    one command that needs admin, without relaunching the entire app.
+    The elevated process runs hidden and the call blocks until it exits.
+
+    Returns True if the command succeeded (exit code 0).
+    """
+    import subprocess
+    # -Wait makes PowerShell block until the elevated process exits.
+    # -WindowStyle Hidden keeps the admin window from flashing.
+    ps_cmd = (
+        f'Start-Process -FilePath "cmd.exe" '
+        f'-ArgumentList "/c {command}" '
+        f'-Verb RunAs -Wait -WindowStyle Hidden'
     )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+        capture_output=True, text=True,
+    )
+    return result.returncode == 0
