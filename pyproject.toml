@@ -5,21 +5,45 @@ build-backend = "hatchling.build"
 [project]
 name = "linwin"
 version = "0.4.0"
-description = "TUI setup tool for WSL2 Ubuntu with WSLg GUI"
+description = "Setup WSL2 and make it easily accessible from Windows desktop"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+readme = "README.md"
+keywords = ["WSL", "WSL2", "Ubuntu", "WSLg", "xrdp", "TUI", "setup", "Windows"]
 authors = [
     {name = "James Abel"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Installation/Setup",
+    "Topic :: System :: Operating System",
 ]
 dependencies = [
     "textual>=0.79.0",
     "pref>=0.3.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/jamesabel/linwin"
+Repository = "https://github.com/jamesabel/linwin"
+Issues = "https://github.com/jamesabel/linwin/issues"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pyship>=0.3.3",
+    "build"
 ]
 
 [project.scripts]
