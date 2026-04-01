@@ -20,6 +20,11 @@ if %errorlevel% neq 0 (
 )
 echo.
 
+:: Clean stale build artifacts so pyship picks up the current version (this should be temporary until pyship >= 0.6.0)
+if exist dist rmdir /s /q dist
+if exist app rmdir /s /q app
+if exist linwin.nsi del linwin.nsi
+
 :: Run pyship to freeze and create installer
 echo Running pyship...
 uv run python -m pyship
