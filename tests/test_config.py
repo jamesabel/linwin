@@ -153,20 +153,15 @@ class TestPrefPersistence:
         assert loaded.aptPackages == ["nautilus", "xfce4"]
         assert loaded.snaps[0].name == "code"
 
-    def test_legacy_json_migration(self, tmp_path, monkeypatch):
-        """If a legacy config.json exists and DB is empty, migrate it."""
-        db = tmp_path / "migrate.db"
-        legacy = tmp_path / "config.json"
-        legacy.write_text(json.dumps({
-            "distroName": "MigratedDistro",
-            "snaps": [{"name": "pycharm-community", "classic": True}],
-        }))
-        # Point the legacy finder to our tmp_path
-        monkeypatch.chdir(tmp_path)
+    def test_empty_db_gets_defaults(self, tmp_path):
+        """An empty DB should be initialized with defaults."""
+        db = tmp_path / "fresh.db"
         config = load_config(db)
-        assert config.distroName == "MigratedDistro"
-        assert len(config.optionalApps) == 1
-        assert config.optionalApps[0].id == "pycharm-community"
+        assert config.distroName == "Ubuntu-22.04"
+        assert config.enableSystemd is True
+        # Loading again should return the persisted defaults.
+        config2 = load_config(db)
+        assert config2.distroName == "Ubuntu-22.04"
 
 
 class TestWindowsToWslPath:

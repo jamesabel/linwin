@@ -1,12 +1,15 @@
-"""Shared configuration: dataclasses, app registry, sqlite-backed persistence via pref."""
+"""Shared configuration: dataclasses, app registry, sqlite-backed persistence via pref.
+
+The ``pref`` package is only required on Windows where the sqlite config
+database lives.  Linux headless mode receives config from the Windows
+side and never touches the DB directly.
+"""
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-
-from pref import Pref
 
 
 # ── Data classes ─────────────────────────────────────────────────────
@@ -217,8 +220,7 @@ def _pref_dict_to_config(data: dict) -> SetupConfig:
 def load_config(db_path: Path | None = None) -> SetupConfig:
     """Load configuration from the per-user sqlite database.
 
-    If the database doesn't exist or is empty, returns defaults.
-    If a legacy ``config.json`` exists and the DB is empty, migrates it.
+    If the database doesn't exist or is empty, initializes with defaults.
 
     Args:
         db_path: Override the DB file path (for testing). If None, uses
@@ -233,15 +235,7 @@ def load_config(db_path: Path | None = None) -> SetupConfig:
     if data:
         return _pref_dict_to_config(data)
 
-    # DB is empty — try migrating from legacy config.json.
-    legacy = _find_legacy_config_json()
-    if legacy:
-        with open(legacy, "r") as f:
-            config = SetupConfig.from_dict(json.load(f))
-        save_config(config, db_path)
-        return config
-
-    # No legacy file — return defaults and persist them.
+    # DB is empty — initialize with defaults and persist them.
     config = SetupConfig()
     save_config(config, db_path)
     return config
@@ -260,8 +254,9 @@ def save_config(config: SetupConfig, db_path: Path | None = None) -> None:
     sd.commit()
 
 
-def _open_pref(db_path: Path | None = None) -> Pref:
+def _open_pref(db_path: Path | None = None):
     """Open the pref database, optionally at a custom path."""
+    from pref import Pref
     if db_path is not None:
         return Pref(_APPLICATION_NAME, _APPLICATION_AUTHOR, file_name=str(db_path.name))
     return Pref(_APPLICATION_NAME, _APPLICATION_AUTHOR)
@@ -269,28 +264,11 @@ def _open_pref(db_path: Path | None = None) -> Pref:
 
 def get_config_db_path() -> Path:
     """Return the path to the sqlite config database (for display purposes)."""
+    from pref import Pref
     p = Pref(_APPLICATION_NAME, _APPLICATION_AUTHOR)
     return p.get_sqlite_path()
 
 
-def _find_legacy_config_json() -> Path | None:
-    """Search for a legacy config.json to migrate from."""
-    import sys
-
-    candidates = [
-        Path.cwd() / "config.json",
-        Path(sys.executable).resolve().parent / "config.json",
-    ]
-
-    current = Path(__file__).resolve().parent
-    for _ in range(5):
-        candidates.append(current / "config.json")
-        current = current.parent
-
-    for c in candidates:
-        if c.exists():
-            return c
-    return None
 
 
 # ── Validation ───────────────────────────────────────────────────────

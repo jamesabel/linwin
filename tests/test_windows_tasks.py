@@ -141,19 +141,28 @@ class TestValidators:
 
 @pytest.mark.asyncio
 class TestFeatures:
-    async def test_check_feature_enabled(self):
+    async def test_check_feature_enabled_as_admin(self):
         from linwin.windows.tasks.features import check_feature
-        with patch("linwin.windows.tasks.features.run_powershell", new_callable=AsyncMock, return_value=_ok("Enabled")):
+        with patch("linwin.windows.app.check_admin", return_value=True), \
+             patch("linwin.windows.tasks.features.run_powershell", new_callable=AsyncMock, return_value=_ok("Enabled")):
             assert await check_feature("VirtualMachinePlatform") is True
 
-    async def test_check_feature_disabled(self):
+    async def test_check_feature_disabled_as_admin(self):
         from linwin.windows.tasks.features import check_feature
-        with patch("linwin.windows.tasks.features.run_powershell", new_callable=AsyncMock, return_value=_ok("Disabled")):
+        with patch("linwin.windows.app.check_admin", return_value=True), \
+             patch("linwin.windows.tasks.features.run_powershell", new_callable=AsyncMock, return_value=_ok("Disabled")):
             assert await check_feature("VirtualMachinePlatform") is False
 
-    async def test_check_feature_failure(self):
+    async def test_check_feature_not_admin_wsl_works(self):
         from linwin.windows.tasks.features import check_feature
-        with patch("linwin.windows.tasks.features.run_powershell", new_callable=AsyncMock, return_value=_fail()):
+        with patch("linwin.windows.app.check_admin", return_value=False), \
+             patch("linwin.shared.subprocess_runner.run_command", new_callable=AsyncMock, return_value=_ok("Default: Ubuntu")):
+            assert await check_feature("VirtualMachinePlatform") is True
+
+    async def test_check_feature_not_admin_wsl_fails(self):
+        from linwin.windows.tasks.features import check_feature
+        with patch("linwin.windows.app.check_admin", return_value=False), \
+             patch("linwin.shared.subprocess_runner.run_command", new_callable=AsyncMock, return_value=_fail()):
             assert await check_feature("VirtualMachinePlatform") is False
 
     async def test_enable_feature_already_enabled(self):
@@ -163,21 +172,39 @@ class TestFeatures:
             assert result.ok
             assert result.already_enabled
 
-    async def test_enable_feature_success(self):
+    async def test_enable_feature_success_as_admin(self):
         from linwin.windows.tasks.features import enable_feature
         with patch("linwin.windows.tasks.features.check_feature", new_callable=AsyncMock, return_value=False), \
+             patch("linwin.windows.app.check_admin", return_value=True), \
              patch("linwin.windows.tasks.features.run_powershell", new_callable=AsyncMock, return_value=_ok()):
             result = await enable_feature("VirtualMachinePlatform")
             assert result.ok
             assert result.enabled_now
 
-    async def test_enable_feature_failure(self):
+    async def test_enable_feature_failure_as_admin(self):
         from linwin.windows.tasks.features import enable_feature
         with patch("linwin.windows.tasks.features.check_feature", new_callable=AsyncMock, return_value=False), \
+             patch("linwin.windows.app.check_admin", return_value=True), \
              patch("linwin.windows.tasks.features.run_powershell", new_callable=AsyncMock, return_value=_fail("", "DISM error")):
             result = await enable_feature("VirtualMachinePlatform")
             assert not result.ok
             assert result.error
+
+    async def test_enable_feature_not_admin_elevated(self):
+        from linwin.windows.tasks.features import enable_feature
+        with patch("linwin.windows.tasks.features.check_feature", new_callable=AsyncMock, return_value=False), \
+             patch("linwin.windows.app.check_admin", return_value=False), \
+             patch("linwin.windows.app.run_elevated", return_value=True):
+            result = await enable_feature("VirtualMachinePlatform")
+            assert result.ok
+
+    async def test_enable_feature_not_admin_denied(self):
+        from linwin.windows.tasks.features import enable_feature
+        with patch("linwin.windows.tasks.features.check_feature", new_callable=AsyncMock, return_value=False), \
+             patch("linwin.windows.app.check_admin", return_value=False), \
+             patch("linwin.windows.app.run_elevated", return_value=False):
+            result = await enable_feature("VirtualMachinePlatform")
+            assert not result.ok
 
     async def test_enable_wsl_feature(self):
         from linwin.windows.tasks.features import enable_wsl_feature

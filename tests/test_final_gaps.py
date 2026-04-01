@@ -169,22 +169,17 @@ class TestLinuxSetupScreen:
 
 
 class TestWindowsMainEntry:
-    def test_main_not_admin(self):
-        """Test that main() tries to elevate when not admin."""
+    def test_main_starts_without_admin(self):
+        """Test that main() proceeds without admin (no UAC gate)."""
         from linwin.windows.__main__ import main
         with patch("linwin.windows.app.check_admin", return_value=False), \
-             patch("linwin.windows.app.relaunch_as_admin"), \
-             pytest.raises(SystemExit) as exc_info:
+             patch("linwin.shared.config.load_config") as mock_load, \
+             patch("linwin.windows.app.WindowsSetupApp") as MockApp:
+            mock_load.return_value = SetupConfig()
+            mock_app = MagicMock()
+            MockApp.return_value = mock_app
             main()
-        assert exc_info.value.code == 0
-
-    def test_main_not_admin_elevation_fails(self):
-        from linwin.windows.__main__ import main
-        with patch("linwin.windows.app.check_admin", return_value=False), \
-             patch("linwin.windows.app.relaunch_as_admin", side_effect=RuntimeError("UAC failed")), \
-             pytest.raises(SystemExit) as exc_info:
-            main()
-        assert exc_info.value.code == 1
+            mock_app.run.assert_called_once()
 
     def test_main_admin_no_config(self, tmp_path, monkeypatch):
         from linwin.windows.__main__ import main
