@@ -440,6 +440,99 @@ class TestWslInstall:
             result = await wait_for_wsl_ready(config, max_attempts=1)
             assert result is False
 
+    async def test_wait_for_wsl_ready_no_systemd_skips_phase2(self):
+        from linwin.windows.tasks.wsl_install import wait_for_wsl_ready
+        config = SetupConfig()
+        commands = []
+
+        async def mock_wsl(distro, cmd, *args, **kwargs):
+            commands.append(cmd)
+            return _ok("ready")
+
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", side_effect=mock_wsl):
+            result = await wait_for_wsl_ready(config, require_systemd=False)
+        assert result is True
+        # Only the shell probe ran; no systemctl phase
+        assert all("systemctl" not in c for c in commands)
+
+    async def test_wait_for_wsl_ready_xrdp_not_installed(self):
+        from linwin.windows.tasks.wsl_install import wait_for_wsl_ready
+        config = SetupConfig()
+
+        async def mock_wsl(distro, cmd, *args, **kwargs):
+            if "echo ready" in cmd:
+                return _ok("ready")
+            return SubprocessResult(0, ["STATE:running", "XRDP:inactive", "SESMAN:inactive"])
+
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", side_effect=mock_wsl):
+            assert await wait_for_wsl_ready(config, max_attempts=2) is True
+
+    async def test_wait_for_wsl_ready_systemd_starting_times_out(self):
+        from linwin.windows.tasks.wsl_install import wait_for_wsl_ready
+        config = SetupConfig()
+
+        async def mock_wsl(distro, cmd, *args, **kwargs):
+            if "echo ready" in cmd:
+                return _ok("ready")
+            return SubprocessResult(0, ["STATE:starting", "XRDP:", "SESMAN:"])
+
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", side_effect=mock_wsl), \
+             patch("asyncio.sleep", new_callable=AsyncMock):
+            assert await wait_for_wsl_ready(config, max_attempts=2) is False
+
+    async def test_user_exists(self):
+        from linwin.windows.tasks.wsl_install import user_exists
+        config = SetupConfig()
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok("yes")):
+            assert await user_exists(config, "ubuntu") is True
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok("no")):
+            assert await user_exists(config, "ghost") is False
+
+    async def test_get_configured_default_user(self):
+        from linwin.windows.tasks.wsl_install import get_configured_default_user
+        config = SetupConfig()
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok("ubuntu")):
+            assert await get_configured_default_user(config) == "ubuntu"
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok("")):
+            assert await get_configured_default_user(config) is None
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_fail()):
+            assert await get_configured_default_user(config) is None
+
+    async def test_create_default_user(self):
+        from linwin.windows.tasks.wsl_install import create_default_user
+        config = SetupConfig()
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok()):
+            result = await create_default_user(config, "ubuntu")
+            assert result.ok
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_fail()):
+            result = await create_default_user(config, "ubuntu")
+            assert not result.ok
+
+    async def test_ensure_passwordless_sudo_already_configured(self):
+        from linwin.windows.tasks.wsl_install import ensure_passwordless_sudo
+        config = SetupConfig()
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok("yes")):
+            result = await ensure_passwordless_sudo(config, "ubuntu")
+            assert result.skipped
+
+    async def test_ensure_passwordless_sudo_creates_drop_in(self):
+        from linwin.windows.tasks.wsl_install import ensure_passwordless_sudo
+        config = SetupConfig()
+        commands = []
+
+        async def mock_wsl(distro, cmd, *args, **kwargs):
+            commands.append(cmd)
+            if "test -f" in cmd:
+                return _ok("no")
+            return _ok()
+
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", side_effect=mock_wsl):
+            result = await ensure_passwordless_sudo(config, "ubuntu")
+        assert result.ok and not result.skipped
+        # The drop-in is written, validated, and named for the user
+        assert any("NOPASSWD" in c and "visudo -cf" in c for c in commands)
+        assert any("linwin-ubuntu" in c for c in commands)
+
 
 # ── wsl_config ───────────────────────────────────────────────────────
 
