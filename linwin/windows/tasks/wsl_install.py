@@ -223,6 +223,52 @@ async def ensure_passwordless_sudo(
     return TaskResult(False, f"Failed to configure passwordless sudo for {username}")
 
 
+async def get_password_status(config: SetupConfig, username: str, on_line: LineCallback | None = None) -> str:
+    """Return the user's password status flag from ``passwd -S``.
+
+    "P" = usable password set, "L" = locked (e.g. fresh useradd),
+    "NP" = no password, "" = could not determine.
+    """
+    result = await run_wsl(
+        config.distroImportName,
+        f"sudo passwd -S {username} 2>/dev/null | cut -d' ' -f2",
+        on_line=on_line,
+        timeout=60,
+    )
+    return result.output.strip() if result.success else ""
+
+
+async def set_user_password(
+    config: SetupConfig, username: str, password: str, on_line: LineCallback | None = None
+) -> TaskResult:
+    """Set the user's password via chpasswd.
+
+    The password travels through a short-lived temp file rather than
+    the command line — every command is written verbatim to setup.log.
+    """
+    from ...shared.config import windows_to_wsl_path
+
+    pw_file = os.path.join(tempfile.gettempdir(), "linwin_pw.txt")
+    with open(pw_file, "w", newline="\n") as f:
+        f.write(f"{username}:{password}\n")
+    try:
+        wsl_path = windows_to_wsl_path(pw_file)
+        result = await run_wsl(
+            config.distroImportName,
+            f"sudo chpasswd < '{wsl_path}'",
+            on_line=on_line,
+            timeout=60,
+        )
+    finally:
+        try:
+            os.remove(pw_file)
+        except OSError:
+            pass
+    if result.success:
+        return TaskResult(True, f"Password set for {username}")
+    return TaskResult(False, f"Failed to set password for {username}")
+
+
 async def set_default_user(config: SetupConfig, username: str, on_line: LineCallback | None = None) -> TaskResult:
     """Set the default user in /etc/wsl.conf.
 

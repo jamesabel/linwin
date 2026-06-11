@@ -319,6 +319,34 @@ class TestVerifyActions:
                     screen.action_launch_terminal()
 
 
+@pytest.mark.asyncio
+class TestLauncherResetPassword:
+    async def test_reset_password_applies_prompt_result(self):
+        from linwin.shared.base_app import BaseSetupApp
+        from linwin.shared.task_result import TaskResult
+        from linwin.windows.screens.launcher import LauncherScreen
+
+        config = SetupConfig()
+        app = BaseSetupApp(config)
+
+        with patch("linwin.windows.tasks.wsl_install.get_configured_default_user",
+                   new_callable=AsyncMock, return_value="ubuntu"), \
+             patch("linwin.windows.tasks.wsl_install.set_user_password",
+                   new_callable=AsyncMock,
+                   return_value=TaskResult(ok=True, message="Password set")) as set_pw:
+            async with app.run_test(size=(80, 30)) as pilot:
+                screen = LauncherScreen(config)
+                app.push_screen(screen)
+                await pilot.pause()
+                with patch.object(app, "push_screen_wait",
+                                  new_callable=AsyncMock, return_value="newpass"):
+                    screen.action_reset_password()
+                    await pilot.pause()
+                    await app.workers.wait_for_complete()
+            assert set_pw.await_args.args[1] == "ubuntu"
+            assert set_pw.await_args.args[2] == "newpass"
+
+
 # ── StatusScreen detail modal ────────────────────────────────────────
 
 

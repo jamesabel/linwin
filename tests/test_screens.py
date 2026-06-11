@@ -52,6 +52,47 @@ class TestWidgets:
             tasks.set_status("t2", "skipped", "already installed")
             tasks.set_all_pending()
 
+    async def test_password_prompt_modal(self):
+        from textual.widgets import Input, Static
+        from linwin.shared.base_app import BaseSetupApp
+        from linwin.windows.screens.password_prompt import PasswordPromptScreen
+
+        config = SetupConfig()
+        app = BaseSetupApp(config)
+        results = []
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            app.push_screen(PasswordPromptScreen("ubuntu"), callback=results.append)
+            await pilot.pause()
+            screen = app.screen
+            # Mismatched confirmation is rejected with an error message
+            screen.query_one("#pw-input", Input).value = "secret1"
+            screen.query_one("#pw-confirm", Input).value = "secret2"
+            screen.action_submit()
+            await pilot.pause()
+            assert results == []
+            assert "match" in str(screen.query_one("#pw-error", Static).render())
+            # Matching confirmation dismisses with the password
+            screen.query_one("#pw-confirm", Input).value = "secret1"
+            screen.action_submit()
+            await pilot.pause()
+        assert results == ["secret1"]
+
+    async def test_password_prompt_skip_returns_none(self):
+        from linwin.shared.base_app import BaseSetupApp
+        from linwin.windows.screens.password_prompt import PasswordPromptScreen
+
+        config = SetupConfig()
+        app = BaseSetupApp(config)
+        results = []
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            app.push_screen(PasswordPromptScreen("ubuntu"), callback=results.append)
+            await pilot.pause()
+            app.screen.action_skip()
+            await pilot.pause()
+        assert results == [None]
+
     async def test_task_row_running_shows_elapsed_time(self):
         from textual.widgets import Label
         from linwin.shared.widgets import TaskListWidget, TaskRow

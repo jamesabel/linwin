@@ -249,6 +249,25 @@ class SetupScreen(ClickDispatchScreen):
             else:
                 log.write_error(sudo_result.message)
 
+            # The xrdp RDP login needs a real password; a freshly created
+            # user's password is locked. Prompt rather than leave the
+            # user with an account they cannot log into.
+            pw_status = await wsl_install.get_password_status(config, username, on_line)
+            if pw_status != "P":
+                from .password_prompt import PasswordPromptScreen
+                password = await self.app.push_screen_wait(PasswordPromptScreen(username))
+                if password:
+                    pw_result = await wsl_install.set_user_password(config, username, password, on_line)
+                    if pw_result.ok:
+                        log.write_success(pw_result.message)
+                    else:
+                        log.write_error(pw_result.message)
+                else:
+                    log.write_info(
+                        f"No password set — RDP login will not work until you run: "
+                        f"wsl -d {config.distroImportName} -- sudo passwd {username}"
+                    )
+
             user_result = await wsl_install.set_default_user(config, username, on_line)
             if user_result.skipped:
                 tasks.set_status("set_user", "skipped", f"already set to {username}")

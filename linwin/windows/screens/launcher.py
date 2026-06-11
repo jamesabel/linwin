@@ -25,11 +25,12 @@ _STANDARD_APPS = [
 
 # Maintenance items: always present.
 _MAINTENANCE = [
-    ("run_verify",  "Run Verification"),
-    ("run_setup",   "Re-run Setup"),
-    ("configure",   "Configure Settings"),
-    ("view_status", "View Status"),
-    ("quit",        "Exit"),
+    ("run_verify",     "Run Verification"),
+    ("run_setup",      "Re-run Setup"),
+    ("configure",      "Configure Settings"),
+    ("view_status",    "View Status"),
+    ("reset_password", "Reset RDP Password"),
+    ("quit",           "Exit"),
 ]
 
 
@@ -179,6 +180,9 @@ class LauncherScreen(ClickDispatchScreen):
     def action_view_status(self) -> None:
         self._go_to_status()
 
+    def action_reset_password(self) -> None:
+        self._reset_password()
+
     def action_quit(self) -> None:
         self.app.exit()
 
@@ -221,3 +225,24 @@ class LauncherScreen(ClickDispatchScreen):
         health = await run_health_check(self._config)
         from .status import StatusScreen
         self.app.switch_screen(StatusScreen(self._config, health))
+
+    @work
+    async def _reset_password(self) -> None:
+        """Prompt for and set a new password for the default Linux user."""
+        from ..tasks import wsl_install
+        from .password_prompt import PasswordPromptScreen
+
+        username = await wsl_install.get_configured_default_user(self._config)
+        if not username or username == "root":
+            username = await wsl_install.detect_default_user(self._config)
+        if not username:
+            self.app.notify("No Linux user found to reset", severity="error")
+            return
+        password = await self.app.push_screen_wait(PasswordPromptScreen(username))
+        if password is None:
+            return
+        result = await wsl_install.set_user_password(self._config, username, password)
+        if result.ok:
+            self.app.notify(f"Password updated for {username}")
+        else:
+            self.app.notify(result.message, severity="error")

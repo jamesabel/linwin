@@ -508,6 +508,37 @@ class TestWslInstall:
             result = await create_default_user(config, "ubuntu")
             assert not result.ok
 
+    async def test_get_password_status(self):
+        from linwin.windows.tasks.wsl_install import get_password_status
+        config = SetupConfig()
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok("P")):
+            assert await get_password_status(config, "ubuntu") == "P"
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok("L")):
+            assert await get_password_status(config, "ubuntu") == "L"
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_fail()):
+            assert await get_password_status(config, "ubuntu") == ""
+
+    async def test_set_user_password_keeps_secret_off_command_line(self, tmp_path, monkeypatch):
+        from linwin.windows.tasks.wsl_install import set_user_password
+        monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
+        config = SetupConfig()
+        commands = []
+
+        async def mock_wsl(distro, cmd, *args, **kwargs):
+            commands.append(cmd)
+            # The password file must exist while chpasswd runs
+            assert (tmp_path / "linwin_pw.txt").exists()
+            return _ok()
+
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", side_effect=mock_wsl):
+            result = await set_user_password(config, "ubuntu", "s3cret!", None)
+        assert result.ok
+        assert any("chpasswd" in c for c in commands)
+        # The secret never appears in any command (commands are logged)
+        assert all("s3cret!" not in c for c in commands)
+        # The temp file is removed afterwards
+        assert not (tmp_path / "linwin_pw.txt").exists()
+
     async def test_ensure_passwordless_sudo_already_configured(self):
         from linwin.windows.tasks.wsl_install import ensure_passwordless_sudo
         config = SetupConfig()

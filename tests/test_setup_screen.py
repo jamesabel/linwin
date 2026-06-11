@@ -66,6 +66,10 @@ def _setup_patches(overrides: dict | None = None) -> tuple[list, dict]:
             AsyncMock(return_value=_tr(message="created"))),
         add("ensure_passwordless_sudo", "linwin.windows.tasks.wsl_install.ensure_passwordless_sudo",
             AsyncMock(return_value=_tr(message="configured", skipped=True))),
+        add("get_password_status", "linwin.windows.tasks.wsl_install.get_password_status",
+            AsyncMock(return_value=o.get("password_status", "P"))),
+        add("set_user_password", "linwin.windows.tasks.wsl_install.set_user_password",
+            AsyncMock(return_value=_tr(message="Password set"))),
         add("set_default_user", "linwin.windows.tasks.wsl_install.set_default_user",
             AsyncMock(return_value=_tr(message="already set", skipped=True))),
         add("shutdown_wsl", "linwin.windows.tasks.wsl_install.shutdown_wsl",
@@ -181,6 +185,62 @@ class TestSetupScreenFlow:
         mocks["set_version"].assert_not_awaited()
         mocks["run_linux_headless"].assert_not_awaited()
         mocks["clear_state"].assert_not_called()
+
+    async def test_locked_password_prompts_and_sets(self):
+        from linwin.shared.base_app import BaseSetupApp
+        from linwin.windows.screens.setup import SetupScreen
+
+        config = SetupConfig()
+        app = BaseSetupApp(config)
+        patchers, mocks = _setup_patches({"password_status": "L"})
+
+        with ExitStack() as stack:
+            for p in patchers:
+                stack.enter_context(p)
+            stack.enter_context(patch.object(
+                app, "push_screen_wait", AsyncMock(return_value="hunter2")))
+            await _run_screen(app, SetupScreen(config))
+
+        # Locked password -> the prompt's answer is applied to the user
+        args = mocks["set_user_password"].await_args.args
+        assert args[1] == "ubuntu" and args[2] == "hunter2"
+
+    async def test_locked_password_prompt_skipped(self):
+        from linwin.shared.base_app import BaseSetupApp
+        from linwin.windows.screens.setup import SetupScreen
+
+        config = SetupConfig()
+        app = BaseSetupApp(config)
+        patchers, mocks = _setup_patches({"password_status": "L"})
+
+        with ExitStack() as stack:
+            for p in patchers:
+                stack.enter_context(p)
+            stack.enter_context(patch.object(
+                app, "push_screen_wait", AsyncMock(return_value=None)))
+            await _run_screen(app, SetupScreen(config))
+
+        # User skipped the prompt -> nothing applied, flow continues
+        mocks["set_user_password"].assert_not_awaited()
+        mocks["clear_state"].assert_called_once()
+
+    async def test_set_password_not_prompted_when_already_set(self):
+        from linwin.shared.base_app import BaseSetupApp
+        from linwin.windows.screens.setup import SetupScreen
+
+        config = SetupConfig()
+        app = BaseSetupApp(config)
+        patchers, mocks = _setup_patches()  # password_status "P"
+
+        with ExitStack() as stack:
+            for p in patchers:
+                stack.enter_context(p)
+            prompt = stack.enter_context(patch.object(
+                app, "push_screen_wait", AsyncMock(return_value="unused")))
+            await _run_screen(app, SetupScreen(config))
+
+        prompt.assert_not_awaited()
+        mocks["set_user_password"].assert_not_awaited()
 
     async def test_ghost_configured_user_falls_back_to_detection(self):
         from linwin.shared.base_app import BaseSetupApp
