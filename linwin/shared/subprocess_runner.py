@@ -29,6 +29,14 @@ class SubprocessResult:
         return "\n".join(self.stdout_lines)
 
 
+def _kill_quietly(proc: asyncio.subprocess.Process) -> None:
+    """Kill a child process, tolerating one that already exited."""
+    try:
+        proc.kill()
+    except (ProcessLookupError, OSError):
+        pass
+
+
 async def run_command(
     args: list[str],
     on_line: LineCallback | None = None,
@@ -95,10 +103,23 @@ async def run_command(
                 read_stream(proc.stderr, "stderr", stderr_lines),
             )
     except asyncio.TimeoutError:
-        proc.kill()
+        _kill_quietly(proc)
+        # Reap the killed child so its pipe transports close; otherwise
+        # they warn ("I/O operation on closed pipe") at interpreter
+        # shutdown when the GC finds them unclosed.
+        await proc.wait()
         elapsed = time.monotonic() - t0
         log.warning("TIMEOUT after %.1fs: %s", elapsed, cmd_str)
         return SubprocessResult(exit_code=-1, stdout_lines=stdout_lines, stderr_lines=["Timed out"])
+    except BaseException:
+        # Cancellation (e.g. the app exits while a probe is in flight):
+        # kill and reap the child instead of abandoning its transports.
+        _kill_quietly(proc)
+        try:
+            await proc.wait()
+        except BaseException:
+            pass
+        raise
 
     await proc.wait()
     elapsed = time.monotonic() - t0
