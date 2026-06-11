@@ -203,22 +203,35 @@ async def ensure_passwordless_sudo(
 
 
 async def set_default_user(config: SetupConfig, username: str, on_line: LineCallback | None = None) -> TaskResult:
-    """Set the default user in /etc/wsl.conf."""
-    # Check if already set
-    check = await run_wsl(
-        config.distroImportName,
-        "grep -q '\\[user\\]' /etc/wsl.conf 2>/dev/null && echo yes || echo no",
-        on_line=on_line,
-        timeout=60,
-    )
-    if check.output.strip() == "yes":
+    """Set the default user in /etc/wsl.conf.
+
+    Replaces a wrong existing ``default=`` (e.g. a leftover
+    ``default=root``) instead of skipping whenever a ``[user]`` section
+    happens to exist. Takes effect on the next WSL restart.
+    """
+    current = await get_configured_default_user(config, on_line)
+    if current == username:
         return TaskResult(True, "Default user already configured", skipped=True)
 
-    cmd = (
-        f"echo '' | sudo tee -a /etc/wsl.conf > /dev/null && "
-        f"echo '[user]' | sudo tee -a /etc/wsl.conf > /dev/null && "
-        f"echo 'default={username}' | sudo tee -a /etc/wsl.conf > /dev/null"
-    )
+    if current:
+        # A different default exists — replace it in place.
+        cmd = f"sudo sed -i 's/^default=.*/default={username}/' /etc/wsl.conf"
+    else:
+        check = await run_wsl(
+            config.distroImportName,
+            "grep -q '\\[user\\]' /etc/wsl.conf 2>/dev/null && echo yes || echo no",
+            on_line=on_line,
+            timeout=60,
+        )
+        if check.output.strip() == "yes":
+            # Section exists without a default= line — add one under it.
+            cmd = f"sudo sed -i '/\\[user\\]/a default={username}' /etc/wsl.conf"
+        else:
+            cmd = (
+                f"echo '' | sudo tee -a /etc/wsl.conf > /dev/null && "
+                f"echo '[user]' | sudo tee -a /etc/wsl.conf > /dev/null && "
+                f"echo 'default={username}' | sudo tee -a /etc/wsl.conf > /dev/null"
+            )
     result = await run_wsl(config.distroImportName, cmd, on_line=on_line, timeout=60)
     if result.success:
         return TaskResult(True, f"Default user set to {username}")

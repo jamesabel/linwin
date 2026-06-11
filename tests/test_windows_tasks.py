@@ -367,22 +367,45 @@ class TestWslInstall:
     async def test_set_default_user_already_set(self):
         from linwin.windows.tasks.wsl_install import set_default_user
         config = SetupConfig()
-        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok("yes")):
+        # get_configured_default_user reads back the same username -> skip
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", new_callable=AsyncMock, return_value=_ok("james")):
             result = await set_default_user(config, "james")
             assert result.skipped
 
     async def test_set_default_user_success(self):
         from linwin.windows.tasks.wsl_install import set_default_user
         config = SetupConfig()
+        commands = []
 
         async def mock_wsl(distro, cmd, *args, **kwargs):
+            commands.append(cmd)
+            if "default=' /etc/wsl.conf" in cmd or "'^default='" in cmd:
+                return _ok("")  # no default configured
             if "grep" in cmd:
-                return _ok("no")
+                return _ok("no")  # no [user] section
             return _ok()
 
         with patch("linwin.windows.tasks.wsl_install.run_wsl", side_effect=mock_wsl):
             result = await set_default_user(config, "james")
             assert result.ok
+            assert any("default=james" in c for c in commands)
+
+    async def test_set_default_user_replaces_existing(self):
+        from linwin.windows.tasks.wsl_install import set_default_user
+        config = SetupConfig()
+        commands = []
+
+        async def mock_wsl(distro, cmd, *args, **kwargs):
+            commands.append(cmd)
+            if "'^default='" in cmd:
+                return _ok("root")  # leftover default=root
+            return _ok()
+
+        with patch("linwin.windows.tasks.wsl_install.run_wsl", side_effect=mock_wsl):
+            result = await set_default_user(config, "james")
+            assert result.ok
+            # Must rewrite the existing default= line, not append a section
+            assert any("sed" in c and "default=james" in c for c in commands)
 
     async def test_shutdown_wsl(self):
         from linwin.windows.tasks.wsl_install import shutdown_wsl

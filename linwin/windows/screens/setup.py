@@ -201,13 +201,18 @@ class SetupScreen(ClickDispatchScreen):
         async def set_user_step() -> bool:
             log.write_command("Detecting and setting default user...")
             tasks.set_status("set_user", "running")
-            # A default already set in wsl.conf wins — that's who the
-            # headless steps run as, so sudo must be granted to them,
-            # not to whichever /home entry happens to sort first.
-            username = await wsl_install.get_configured_default_user(config, on_line)
-            if username:
+            # A non-root default already set in wsl.conf wins — that's
+            # who the headless steps run as, so sudo must be granted to
+            # them, not to whichever /home entry happens to sort first.
+            # A leftover default=root is treated as unconfigured so the
+            # RDP session gets a real user (set_default_user replaces it).
+            configured = await wsl_install.get_configured_default_user(config, on_line)
+            if configured and configured != "root":
+                username = configured
                 log.write_info(f"Default user already configured: {username}")
             elif username := await wsl_install.detect_default_user(config, on_line):
+                if configured == "root":
+                    log.write_info("wsl.conf default is root — switching to a non-root user...")
                 log.write_info(f"Detected user: {username}")
             else:
                 # --no-launch skips the OOBE, so create the user ourselves.
