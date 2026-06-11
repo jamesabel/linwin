@@ -81,6 +81,53 @@ class TestApt:
             assert not result.ok
 
 
+# ── desktop icons ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestDesktopIcons:
+    async def test_no_apps_skips_without_subprocess(self):
+        from linwin.linux.tasks.desktop import create_desktop_icons
+        with patch("linwin.linux.tasks.desktop.run_local", new_callable=AsyncMock) as run:
+            result = await create_desktop_icons([])
+        assert result.ok and result.skipped
+        run.assert_not_called()
+
+    async def test_creates_icon_for_found_launcher(self):
+        from linwin.shared.config import AppEntry
+        from linwin.linux.tasks.desktop import create_desktop_icons
+        commands = []
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            commands.append(cmd)
+            if "xdg-user-dir" in cmd:
+                return _ok("/home/ubuntu/Desktop")
+            return _ok("OK")
+
+        apps = [AppEntry("firefox", "Firefox", "firefox", "snap", classic=False)]
+        with patch("linwin.linux.tasks.desktop.run_local", side_effect=mock_run):
+            result = await create_desktop_icons(apps)
+        assert result.ok
+        assert "Firefox" in result.message and "created" in result.message
+        # The copy command searches snap and system desktop entries
+        assert any("firefox_firefox.desktop" in c and "chmod +x" in c for c in commands)
+
+    async def test_reports_missing_launcher(self):
+        from linwin.shared.config import AppEntry
+        from linwin.linux.tasks.desktop import create_desktop_icons
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            if "xdg-user-dir" in cmd:
+                return _ok("/home/ubuntu/Desktop")
+            return _ok("MISS")
+
+        apps = [AppEntry("matlab", "MATLAB", "matlab", "custom")]
+        with patch("linwin.linux.tasks.desktop.run_local", side_effect=mock_run):
+            result = await create_desktop_icons(apps)
+        assert result.ok  # cosmetic step never fails the flow
+        assert "no launcher found" in result.message and "MATLAB" in result.message
+
+
 # ── snaps ────────────────────────────────────────────────────────────
 
 

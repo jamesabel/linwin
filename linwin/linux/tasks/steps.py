@@ -20,7 +20,7 @@ from ...shared.config import SetupConfig, SnapPackage
 from ...shared.headless_protocol import emit_error, emit_log, emit_task
 from ...shared.subprocess_runner import LineCallback
 from ...shared.task_result import TaskResult
-from . import apt, snaps, systemd, wslg, xrdp
+from . import apt, desktop, snaps, systemd, wslg, xrdp
 
 StepCoro = Callable[[LineCallback | None], Awaitable[TaskResult]]
 
@@ -91,6 +91,11 @@ def build_package_steps(config: SetupConfig, include_systemd: bool = True) -> li
                 f"apt_opt_{app.id}", f"Install {app.display_name} (apt)",
                 lambda on_line=None, a=app: apt.install_apt_package(a.id, on_line),
             ))
+    steps.append(SetupStep(
+        "desktop_icons", "Create desktop shortcuts",
+        lambda on_line=None, a=tuple(config.optionalApps):
+            desktop.create_desktop_icons(list(a), on_line),
+    ))
     steps.append(SetupStep("verify_wslg", "Verify WSLg", verify_wslg_step))
     return steps
 

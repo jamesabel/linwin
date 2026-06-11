@@ -140,6 +140,8 @@ def _packages_patches(apt_ok: bool = True, systemd_running: bool = True, snapd_o
               return_value=tr(snapd_ok, "ready" if snapd_ok else "fail")),
         patch("linwin.linux.tasks.snaps.install_snap", new_callable=AsyncMock,
               return_value=tr(True, "installed")),
+        patch("linwin.linux.tasks.desktop.create_desktop_icons", new_callable=AsyncMock,
+              return_value=tr(True, "shortcuts created")),
         patch("linwin.linux.tasks.wslg.verify_wslg", new_callable=AsyncMock,
               return_value=MagicMock(display_set=True, display_value=":0",
                                      wslg_dir_exists=True, xeyes_works=True)),

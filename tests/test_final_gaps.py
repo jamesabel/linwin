@@ -154,6 +154,8 @@ class TestLinuxSetupScreen:
                    return_value=TaskResult(ok=True, message="ready")), \
              patch("linwin.linux.tasks.snaps.install_snap", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="installed", skipped=True)), \
+             patch("linwin.linux.tasks.desktop.create_desktop_icons", new_callable=AsyncMock,
+                   return_value=TaskResult(ok=True, message="shortcuts created")), \
              patch("linwin.linux.tasks.wslg.verify_wslg", new_callable=AsyncMock,
                    return_value=MagicMock(display_set=True, display_value=":0", wslg_dir_exists=True, xeyes_works=None)):
             async with app.run_test(size=(80, 24)) as pilot:

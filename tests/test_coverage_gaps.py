@@ -241,6 +241,8 @@ class TestLinuxMainBranches:
                   return_value=True),
             patch("linwin.linux.tasks.snaps.ensure_snapd", new_callable=AsyncMock,
                   return_value=TR(ok=snapd_ok, message="ready" if snapd_ok else "fail")),
+            patch("linwin.linux.tasks.desktop.create_desktop_icons", new_callable=AsyncMock,
+                  return_value=TR(ok=True, message="shortcuts created")),
             patch("linwin.linux.tasks.wslg.verify_wslg", new_callable=AsyncMock,
                   return_value=MagicMock(display_set=True, display_value=":0",
                                          wslg_dir_exists=True, xeyes_works=None)),
