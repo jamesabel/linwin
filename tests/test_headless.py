@@ -26,9 +26,12 @@ class RecordingReporter:
         self.statuses: list[tuple[str, str]] = []
         self.errors: list[str] = []
         self.infos: list[str] = []
+        self.details: dict[str, str] = {}
 
-    def set_status(self, task_id: str, status: str) -> None:
+    def set_status(self, task_id: str, status: str, detail: str = "") -> None:
         self.statuses.append((task_id, status))
+        if detail:
+            self.details[task_id] = detail
 
     def command(self, msg: str) -> None:
         pass
@@ -78,6 +81,8 @@ class TestRunSteps:
         ok = asyncio.run(run_steps([_step("t", TaskResult(ok=True, message="already", skipped=True))], reporter))
         assert ok is True
         assert ("t", "skipped") in reporter.statuses
+        # The skip reason must travel with the status.
+        assert reporter.details["t"] == "already"
 
     def test_snapd_failure_gates_snap_steps(self):
         import asyncio

@@ -98,7 +98,7 @@ class SetupScreen(ClickDispatchScreen):
             tasks.set_status(task_id, "running")
             result = await coro
             if result.skipped:
-                tasks.set_status(task_id, "skipped")
+                tasks.set_status(task_id, "skipped", result.message)
                 log.write_info(f"Skipped: {result.message}")
             elif result.ok:
                 tasks.set_status(task_id, "done")
@@ -134,10 +134,13 @@ class SetupScreen(ClickDispatchScreen):
                 tasks.set_status(check_id, "running")
                 log.write_command(f"Checking {label}...")
                 enabled = await features.check_feature(feature_name, on_line)
-                tasks.set_status(check_id, "done" if enabled else "skipped")
+                if enabled:
+                    tasks.set_status(check_id, "done")
+                else:
+                    tasks.set_status(check_id, "skipped", f"{label} not enabled yet")
 
                 if enabled:
-                    tasks.set_status(enable_id, "skipped")
+                    tasks.set_status(enable_id, "skipped", f"{label} already enabled")
                     log.write_info(f"{label} already enabled.")
                     return True
 
@@ -180,8 +183,8 @@ class SetupScreen(ClickDispatchScreen):
             tasks.set_status("export_distro", "running")
             export_result, tar_path = await wsl_install.export_distro(config, on_line)
             if export_result.skipped:
-                tasks.set_status("export_distro", "skipped")
-                tasks.set_status("import_distro", "skipped")
+                tasks.set_status("export_distro", "skipped", "distro already on target drive")
+                tasks.set_status("import_distro", "skipped", "distro already on target drive")
                 log.write_info("Distro already on target drive.")
                 return True
             if not export_result.ok:
@@ -230,7 +233,7 @@ class SetupScreen(ClickDispatchScreen):
                     username = "ubuntu"
                     log.write_success(create_result.message)
                 else:
-                    tasks.set_status("set_user", "skipped")
+                    tasks.set_status("set_user", "skipped", "could not create a user — default stays root")
                     log.write_error(create_result.message)
                     log.write_info("Could not create a user. Default user will be root.")
                     return True
@@ -247,7 +250,7 @@ class SetupScreen(ClickDispatchScreen):
 
             user_result = await wsl_install.set_default_user(config, username, on_line)
             if user_result.skipped:
-                tasks.set_status("set_user", "skipped")
+                tasks.set_status("set_user", "skipped", f"already set to {username}")
             elif user_result.ok:
                 tasks.set_status("set_user", "done")
             else:

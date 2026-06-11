@@ -18,7 +18,7 @@ import json
 import sys
 
 from ..shared.config import SetupConfig
-from ..shared.headless_protocol import emit_error, emit_task
+from ..shared.headless_protocol import emit_error, emit_log, emit_task
 from ..shared.setup_logging import setup_logging
 
 
@@ -42,6 +42,7 @@ def headless_enable_systemd(config: SetupConfig) -> int:
 
     if not config.enableSystemd:
         emit_task("enable_systemd", "skipped")
+        emit_log("enableSystemd is disabled in the configuration")
         return 0
     ok = asyncio.run(run_steps(build_systemd_steps(config), HeadlessReporter()))
     return 0 if ok else 1

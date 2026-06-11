@@ -145,6 +145,7 @@ class TaskRow(Widget):
     """
 
     status: reactive[str] = reactive("pending")
+    detail: reactive[str] = reactive("")
 
     STATUS_TEXT = {
         "pending": "Pending",
@@ -175,6 +176,18 @@ class TaskRow(Widget):
         except Exception:
             pass  # Widget not yet mounted
 
+    def watch_detail(self, value: str) -> None:
+        if value:
+            get_logger().info("TASK %-25s    (%s)", self.task_id, value)
+        try:
+            name_label = self.query_one(".task-name", Label)
+            if value:
+                name_label.update(f"{self.task_name}  [dim]({rich_escape(value)})[/]")
+            else:
+                name_label.update(self.task_name)
+        except Exception:
+            pass  # Widget not yet mounted
+
 
 class TaskListWidget(Widget):
     """A vertical list of task rows with status tracking."""
@@ -198,11 +211,17 @@ class TaskListWidget(Widget):
             for task_id, task_name in self._tasks:
                 yield TaskRow(task_id, task_name, id=f"task-{task_id}")
 
-    def set_status(self, task_id: str, status: str) -> None:
-        """Update a task's status by its ID."""
+    def set_status(self, task_id: str, status: str, detail: str = "") -> None:
+        """Update a task's status by its ID.
+
+        ``detail`` is shown dimmed next to the task name — use it to say
+        *why* a task was skipped or failed.
+        """
         try:
             row = self.query_one(f"#task-{task_id}", TaskRow)
             row.status = status
+            if detail:
+                row.detail = detail
         except Exception:
             pass
 

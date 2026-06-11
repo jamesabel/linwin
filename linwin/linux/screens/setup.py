@@ -29,8 +29,10 @@ class TuiReporter:
         self._tasks = tasks
         self._log = log
 
-    def set_status(self, task_id: str, status: str) -> None:
-        self._tasks.set_status(task_id, status)
+    def set_status(self, task_id: str, status: str, detail: str = "") -> None:
+        self._tasks.set_status(task_id, status, detail)
+        if detail:
+            self._log.write_info(detail)
 
     def command(self, msg: str) -> None:
         self._log.write_command(msg)

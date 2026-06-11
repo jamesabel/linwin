@@ -116,9 +116,12 @@ def build_systemd_steps(config: SetupConfig) -> list[SetupStep]:
 
 
 class StepReporter(Protocol):
-    """How run_steps reports progress (TUI widgets or headless protocol)."""
+    """How run_steps reports progress (TUI widgets or headless protocol).
 
-    def set_status(self, task_id: str, status: str) -> None: ...
+    ``detail`` explains *why* a status was set (e.g. the skip reason).
+    """
+
+    def set_status(self, task_id: str, status: str, detail: str = "") -> None: ...
     def command(self, msg: str) -> None: ...
     def info(self, msg: str) -> None: ...
     def error(self, msg: str) -> None: ...
@@ -127,8 +130,10 @@ class StepReporter(Protocol):
 class HeadlessReporter:
     """Reports through the TASK/LOG/ERROR line protocol."""
 
-    def set_status(self, task_id: str, status: str) -> None:
+    def set_status(self, task_id: str, status: str, detail: str = "") -> None:
         emit_task(task_id, status)
+        if detail:
+            emit_log(detail)
 
     def command(self, msg: str) -> None:
         emit_log(msg)
@@ -154,7 +159,7 @@ async def run_steps(
     snapd_ok = True
     for step in steps:
         if step.requires_snapd and not snapd_ok:
-            reporter.set_status(step.task_id, "failed")
+            reporter.set_status(step.task_id, "failed", "snapd unavailable")
             reporter.error(f"{step.label} skipped: snapd unavailable")
             all_ok = False
             continue
@@ -162,8 +167,7 @@ async def run_steps(
         reporter.command(f"{step.label}...")
         result = await step.run(on_line)
         if result.skipped:
-            reporter.set_status(step.task_id, "skipped")
-            reporter.info(result.message)
+            reporter.set_status(step.task_id, "skipped", result.message)
         elif result.ok:
             reporter.set_status(step.task_id, "done")
             if result.needs_restart:
