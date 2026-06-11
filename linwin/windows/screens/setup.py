@@ -201,8 +201,13 @@ class SetupScreen(ClickDispatchScreen):
         async def set_user_step() -> bool:
             log.write_command("Detecting and setting default user...")
             tasks.set_status("set_user", "running")
-            username = await wsl_install.detect_default_user(config, on_line)
+            # A default already set in wsl.conf wins — that's who the
+            # headless steps run as, so sudo must be granted to them,
+            # not to whichever /home entry happens to sort first.
+            username = await wsl_install.get_configured_default_user(config, on_line)
             if username:
+                log.write_info(f"Default user already configured: {username}")
+            elif username := await wsl_install.detect_default_user(config, on_line):
                 log.write_info(f"Detected user: {username}")
             else:
                 # --no-launch skips the OOBE, so create the user ourselves.

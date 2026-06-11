@@ -133,6 +133,25 @@ async def detect_default_user(config: SetupConfig, on_line: LineCallback | None 
     return None
 
 
+async def get_configured_default_user(config: SetupConfig, on_line: LineCallback | None = None) -> str | None:
+    """Read the default user already set in /etc/wsl.conf, if any.
+
+    When a default is configured, that user — not the first /home entry —
+    is who the headless setup steps run as, so passwordless sudo must be
+    granted to them.
+    """
+    result = await run_wsl(
+        config.distroImportName,
+        "grep -m1 '^default=' /etc/wsl.conf 2>/dev/null | cut -d= -f2",
+        on_line=on_line,
+        timeout=60,
+    )
+    if result.success:
+        user = result.output.strip()
+        return user or None
+    return None
+
+
 async def create_default_user(
     config: SetupConfig, username: str = "ubuntu", on_line: LineCallback | None = None
 ) -> TaskResult:

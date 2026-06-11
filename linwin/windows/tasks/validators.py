@@ -37,15 +37,22 @@ async def check_windows_build(on_line: LineCallback | None = None) -> TaskResult
 async def check_virtualization(on_line: LineCallback | None = None) -> TaskResult:
     """Check hardware virtualization and related features, with detailed diagnostics on failure."""
     # Gather all virtualization-related info in one PowerShell call
+    # Get-WindowsOptionalFeature needs elevation and its COM exception
+    # ignores -ErrorAction, so wrap it in try/catch — these fields are
+    # diagnostic-only and stay empty when running non-admin.
     diag_script = """
+function Get-FeatureState($name) {
+    try { (Get-WindowsOptionalFeature -Online -FeatureName $name -ErrorAction Stop).State }
+    catch { "" }
+}
 $cpu = Get-CimInstance Win32_Processor
 $fw = $cpu.VirtualizationFirmwareEnabled
 $mfr = $cpu.Manufacturer
 $name = $cpu.Name
 $hypervisor = (Get-CimInstance Win32_ComputerSystem).HypervisorPresent
-$wslState = (Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -ErrorAction SilentlyContinue).State
-$vmState = (Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction SilentlyContinue).State
-$hvState = (Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All -ErrorAction SilentlyContinue).State
+$wslState = Get-FeatureState Microsoft-Windows-Subsystem-Linux
+$vmState = Get-FeatureState VirtualMachinePlatform
+$hvState = Get-FeatureState Microsoft-Hyper-V-All
 Write-Output "FW=$fw"
 Write-Output "MFR=$mfr"
 Write-Output "CPU=$name"
@@ -69,9 +76,9 @@ Write-Output "HYPERV=$hvState"
     hypervisor_present = info.get("HYPERVISOR", "").lower() == "true"
     cpu_name = info.get("CPU", "Unknown")
     mfr = info.get("MFR", "").lower()
-    wsl_state = info.get("WSL", "Unknown")
-    vm_state = info.get("VMPLATFORM", "Unknown")
-    hv_state = info.get("HYPERV", "Unknown")
+    wsl_state = info.get("WSL") or "Unknown (needs admin)"
+    vm_state = info.get("VMPLATFORM") or "Unknown (needs admin)"
+    hv_state = info.get("HYPERV") or "Unknown (needs admin)"
 
     is_intel = "intel" in mfr or "genuineintel" in mfr
     bios_tech = "Intel VT-x" if is_intel else "AMD-V (SVM)"
