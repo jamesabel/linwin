@@ -694,7 +694,9 @@ class TestXrdp:
         joined = "\n".join(commands)
         # The boot script must keep WSLg's X0 reachable and remove the ro mount
         assert "mount --bind" in joined and "umount" in joined
-        assert "systemctl enable --now linwin-x11-dir.service" in joined
+        # restart (not enable --now): a RemainAfterExit oneshot won't re-run
+        # its ExecStart when already active
+        assert "systemctl restart linwin-x11-dir.service" in joined
 
     async def test_enable_xrdp_service_success(self):
         from linwin.linux.tasks.xrdp import enable_xrdp_service

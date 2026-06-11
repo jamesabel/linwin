@@ -188,6 +188,20 @@ class TestRdpPrerequisites:
             "x-www-browser alternative is dangling — sensible-browser fallback is broken"
         )
 
+    def test_startwm_exports_xauthority(self, distro):
+        """startwm.sh must export XAUTHORITY: strictly confined snaps
+        (firefox, chromium) have a remapped HOME and present no X cookie
+        without it — failing with 'cannot open display' even when the
+        socket is reachable."""
+        result = _run(run_wsl(
+            distro,
+            "grep -q 'export XAUTHORITY' /etc/xrdp/startwm.sh && echo yes || echo no",
+        ))
+        assert result.output.strip() == "yes", (
+            "startwm.sh missing 'export XAUTHORITY' — snap apps cannot "
+            "authenticate to the xrdp display"
+        )
+
     def test_x11_socket_dir_writable(self, distro):
         """/tmp/.X11-unix must be writable for xrdp sessions.
 

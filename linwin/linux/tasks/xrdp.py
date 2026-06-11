@@ -65,6 +65,7 @@ async def configure_xrdp_session(on_line: LineCallback | None = None) -> TaskRes
     check = await run_local(
         "grep -q 'unset DBUS_SESSION_BUS_ADDRESS' /etc/xrdp/startwm.sh 2>/dev/null"
         " && grep -q 'XDG_CURRENT_DESKTOP=XFCE' /etc/xrdp/startwm.sh 2>/dev/null"
+        " && grep -q 'XAUTHORITY' /etc/xrdp/startwm.sh 2>/dev/null"
         " && grep -q 'xfce4-session' /etc/xrdp/startwm.sh 2>/dev/null"
         " && echo yes || echo no",
         on_line,
@@ -78,6 +79,9 @@ async def configure_xrdp_session(on_line: LineCallback | None = None) -> TaskRes
     # Key fixes:
     #   - Unset DBUS_SESSION_BUS_ADDRESS and XDG_RUNTIME_DIR inherited
     #     from xrdp-sesman so XFCE creates a fresh D-Bus bus.
+    #   - Export XAUTHORITY explicitly: strictly confined snaps (firefox,
+    #     chromium) have a remapped HOME, so without the variable they
+    #     present no X cookie and fail with "cannot open display".
     #   - Set XDG_CURRENT_DESKTOP=XFCE and DESKTOP_SESSION=xfce
     #     BEFORE sourcing profiles so ubuntu-desktop's GNOME scripts
     #     don't override the desktop environment.
@@ -98,6 +102,7 @@ async def configure_xrdp_session(on_line: LineCallback | None = None) -> TaskRes
         "if test -r ~/.profile; then\n"
         "\t. ~/.profile\n"
         "fi\n"
+        'export XAUTHORITY="${HOME}/.Xauthority"\n'
         "export XDG_SESSION_TYPE=x11\n"
         "export XDG_CURRENT_DESKTOP=XFCE\n"
         "export DESKTOP_SESSION=xfce\n"
@@ -182,6 +187,7 @@ async def create_systemd_overrides(on_line: LineCallback | None = None) -> TaskR
         " && grep -q 'Type=exec' /etc/systemd/system/xrdp-sesman.service 2>/dev/null"
         " && grep -q 'Restart=on-failure' /etc/systemd/system/xrdp.service 2>/dev/null"
         " && grep -q 'Restart=on-failure' /etc/systemd/system/xrdp-sesman.service 2>/dev/null"
+        " && grep -q 'linwin-x11-dir' /etc/systemd/system/xrdp-sesman.service 2>/dev/null"
         " && echo yes || echo no",
         on_line,
         timeout=30,
@@ -217,6 +223,7 @@ async def create_systemd_overrides(on_line: LineCallback | None = None) -> TaskR
         "After=network.target\n"
         "[Service]\n"
         "Type=exec\n"
+        "ExecStartPre=-/usr/local/sbin/linwin-x11-dir.sh\n"
         "ExecStart=/usr/sbin/xrdp-sesman --nodaemon\n"
         "ExecStop=\n"
         "PIDFile=\n"
@@ -359,6 +366,8 @@ async def fix_x11_socket_dir(on_line: LineCallback | None = None) -> TaskResult:
     check = await run_local(
         "test -w /tmp/.X11-unix"
         " && systemctl is-enabled linwin-x11-dir.service > /dev/null 2>&1"
+        " && grep -q 'rebind' " + _X11_FIX_SCRIPT + " 2>/dev/null"
+        " && { test -S /tmp/.X11-unix/X0 || ! test -S /mnt/wslg/.X11-unix/X0; }"
         " && echo yes || echo no",
         on_line,
         timeout=30,
@@ -371,7 +380,7 @@ async def fix_x11_socket_dir(on_line: LineCallback | None = None) -> TaskResult:
         "#!/bin/sh\n"
         "# linwin: make /tmp/.X11-unix writable so xrdp's Xorg can create a\n"
         "# real socket (snap apps cannot use the abstract fallback), keeping\n"
-        "# WSLg's X0 available via a bind mount.\n"
+        "# WSLg's X0 available via a bind mount (rebind when it gets lost).\n"
         "DIR=/tmp/.X11-unix\n"
         "WSLG_X0=/mnt/wslg/.X11-unix/X0\n"
         'if mount | grep -q "on ${DIR} type tmpfs (ro"; then\n'
@@ -379,7 +388,9 @@ async def fix_x11_socket_dir(on_line: LineCallback | None = None) -> TaskResult:
         "fi\n"
         'mkdir -p "${DIR}"\n'
         'chmod 1777 "${DIR}"\n'
-        'if [ -S "${WSLG_X0}" ] && [ ! -e "${DIR}/X0" ]; then\n'
+        'if [ -S "${WSLG_X0}" ] && [ ! -S "${DIR}/X0" ]; then\n'
+        '    umount "${DIR}/X0" 2>/dev/null || true\n'
+        '    rm -f "${DIR}/X0"\n'
         '    touch "${DIR}/X0"\n'
         '    mount --bind "${WSLG_X0}" "${DIR}/X0"\n'
         "fi\n"
@@ -408,7 +419,8 @@ async def fix_x11_socket_dir(on_line: LineCallback | None = None) -> TaskResult:
         return TaskResult(ok=False, message="Failed to write the X11 socket dir fix")
     r3 = await run_local(
         f"sudo chmod +x {_X11_FIX_SCRIPT} && sudo systemctl daemon-reload && "
-        "sudo systemctl enable --now linwin-x11-dir.service",
+        "sudo systemctl enable linwin-x11-dir.service && "
+        "sudo systemctl restart linwin-x11-dir.service",
         on_line,
         timeout=120,
     )
