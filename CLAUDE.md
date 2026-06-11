@@ -10,7 +10,7 @@ linwin is a Textual-based TUI that automates installing Ubuntu on Windows 11 via
 
 All commands use `uv` and run from the project root.
 
-- **Run the Windows TUI:** `uv run python -m linwin.windows` (or `run.bat`)
+- **Run the Windows TUI:** `uv run python -m linwin.windows` (or `linwin.bat`)
 - **Dev environment setup:** `scripts\setup_dev.bat` (installs uv, Python, syncs runtime + `dev` group)
 - **Full end-user setup:** `scripts\setup_wsl.bat` (also installs uv/Python; uses `uv sync --exclude-newer <7 days ago>` for supply-chain safety)
 - **Run all tests:** `uv run python -m pytest tests/ -v` (or `scripts\test.bat`)

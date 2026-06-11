@@ -33,7 +33,7 @@ The TUI handles admin elevation, the reboot boundary, and cross-WSL Linux setup 
 For quick reruns without dependency installation:
 
 ```powershell
-run.bat
+linwin.bat
 ```
 
 ### Linux TUI
@@ -83,7 +83,7 @@ Edit `config.json` before running, or use the built-in Configure Settings screen
 
 | Path | Description |
 |------|-------------|
-| `run.bat` | Quick launch -- runs the TUI without dependency installation |
+| `linwin.bat` | Quick launch -- runs the TUI without dependency installation |
 | `scripts/setup_wsl.bat` | Full setup -- installs uv, Python, dependencies, then launches the TUI |
 | `scripts/test.bat` | Run the test suite |
 | `linwin/windows/` | Windows TUI package -- startup verification, auto-config, setup with live progress |
