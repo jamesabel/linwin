@@ -197,6 +197,7 @@ class TestHeadlessConfigureXrdp:
             patch("linwin.linux.tasks.xrdp.install_xrdp", new_callable=AsyncMock, return_value=tr),
             patch("linwin.linux.tasks.xrdp.configure_xrdp_port", new_callable=AsyncMock, return_value=tr),
             patch("linwin.linux.tasks.xrdp.configure_xrdp_session", new_callable=AsyncMock, return_value=tr),
+            patch("linwin.linux.tasks.xrdp.configure_default_browser", new_callable=AsyncMock, return_value=tr),
             patch("linwin.linux.tasks.xrdp.enable_xrdp_service", new_callable=AsyncMock, return_value=tr),
         ]
         with ExitStack() as stack:

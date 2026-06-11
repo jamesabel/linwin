@@ -339,6 +339,61 @@ async def enable_xrdp_service(on_line: LineCallback | None = None) -> TaskResult
     return TaskResult(ok=False, message="Failed to enable xrdp service")
 
 
+# Candidate browser launchers, in preference order, mapped to the XFCE
+# helper id that launches them (exo ships /usr/share/xfce4/helpers/<id>.desktop).
+_BROWSER_CANDIDATES = [
+    ("/snap/bin/firefox", "firefox"),
+    ("/usr/bin/firefox", "firefox"),
+    ("/snap/bin/chromium", "chromium"),
+    ("/usr/bin/chromium-browser", "chromium"),
+    ("/usr/bin/google-chrome", "google-chrome"),
+]
+
+
+async def configure_default_browser(on_line: LineCallback | None = None) -> TaskResult:
+    """Point the XFCE default Web Browser at an installed browser.
+
+    Ubuntu installs firefox as a snap, which can leave the
+    x-www-browser alternative dangling at a /usr/bin/firefox that no
+    longer exists and no XFCE preferred browser configured — the
+    panel's browser button then fails with "Failed to execute default
+    Web Browser". Configure both the XFCE helper and the alternative
+    to the first browser actually present; skip when none is installed.
+    """
+    found_path = found_helper = None
+    for path, helper in _BROWSER_CANDIDATES:
+        check = await run_local(f"test -x {path} && echo yes || echo no", on_line, timeout=30)
+        if check.output.strip() == "yes":
+            found_path, found_helper = path, helper
+            break
+    if not found_path:
+        return TaskResult(ok=True, message="No browser installed — nothing to configure", skipped=True)
+
+    check = await run_local(
+        f"grep -qx 'WebBrowser={found_helper}' ~/.config/xfce4/helpers.rc 2>/dev/null"
+        " && target=$(readlink -f /etc/alternatives/x-www-browser 2>/dev/null)"
+        " && test -x \"$target\""
+        " && echo yes || echo no",
+        on_line,
+        timeout=30,
+    )
+    if check.output.strip() == "yes":
+        return TaskResult(ok=True, message=f"Default browser already {found_helper}", skipped=True)
+
+    cmd = (
+        "mkdir -p ~/.config/xfce4 && "
+        "touch ~/.config/xfce4/helpers.rc && "
+        "sed -i '/^WebBrowser=/d' ~/.config/xfce4/helpers.rc && "
+        f"echo 'WebBrowser={found_helper}' >> ~/.config/xfce4/helpers.rc && "
+        f"sudo update-alternatives --install /usr/bin/x-www-browser x-www-browser {found_path} 200 > /dev/null && "
+        f"sudo update-alternatives --set x-www-browser {found_path} > /dev/null"
+    )
+    result = await run_local(cmd, on_line, timeout=60)
+    if result.success:
+        return TaskResult(ok=True, message=f"Default browser set to {found_helper} ({found_path})")
+    return TaskResult(ok=False, message="Failed to configure default browser")
+
+
 async def check_xrdp_running(on_line: LineCallback | None = None) -> bool:
     """Check if xrdp service is active."""
     result = await run_local("systemctl is-active xrdp 2>/dev/null", on_line, timeout=30)

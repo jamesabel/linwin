@@ -103,6 +103,7 @@ def build_xrdp_steps(config: SetupConfig) -> list[SetupStep]:
         SetupStep("xrdp_port", f"Configure xrdp port {port}",
                   lambda on_line=None, p=port: xrdp.configure_xrdp_port(p, on_line)),
         SetupStep("xrdp_session", "Configure XFCE4 session", xrdp.configure_xrdp_session),
+        SetupStep("xrdp_browser", "Configure default web browser", xrdp.configure_default_browser),
         SetupStep("xrdp_service", "Enable xrdp service", xrdp.enable_xrdp_service),
     ]
 

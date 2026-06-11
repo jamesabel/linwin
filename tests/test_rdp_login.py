@@ -145,6 +145,49 @@ class TestRdpPrerequisites:
             "colord polkit rule missing — RDP sessions will crash on interaction"
         )
 
+    def test_default_browser_launches(self, distro):
+        """The XFCE 'Web Browser' launcher must resolve to a real binary.
+
+        Ubuntu installs firefox as a snap, leaving the x-www-browser
+        alternative pointing at a /usr/bin/firefox that no longer
+        exists — the panel button then fails with 'Failed to execute
+        default Web Browser'. Setup must configure a working default
+        whenever any browser is installed.
+        """
+        # Is any browser installed at all? (login shell so /snap/bin is on PATH)
+        r = _run(run_wsl(
+            distro,
+            "bash -lc 'command -v firefox chromium chromium-browser google-chrome' 2>/dev/null | head -1",
+        ))
+        if not (r.success and r.output.strip()):
+            pytest.skip("No browser installed in the distro")
+
+        # exo consults the XFCE helper first; it must name a resolvable browser
+        r = _run(run_wsl(
+            distro,
+            "grep -m1 '^WebBrowser=' ~/.config/xfce4/helpers.rc 2>/dev/null | cut -d= -f2",
+        ))
+        helper = r.output.strip()
+        assert helper, (
+            "No default WebBrowser configured in ~/.config/xfce4/helpers.rc — "
+            "the XFCE browser button will fail with 'Failed to execute default Web Browser'"
+        )
+        r = _run(run_wsl(distro, f"bash -lc 'command -v {helper} > /dev/null' && echo yes || echo no"))
+        assert r.output.strip() == "yes", (
+            f"Configured WebBrowser helper '{helper}' does not resolve to a binary"
+        )
+
+        # The sensible-browser fallback must not be a dangling alternative.
+        # test -x follows symlinks, so a dangling target fails it.
+        # ($-free on purpose: the wsl.exe relay mangles $ even in quotes.)
+        r = _run(run_wsl(
+            distro,
+            "test -x /etc/alternatives/x-www-browser && echo yes || echo no",
+        ))
+        assert r.output.strip() == "yes", (
+            "x-www-browser alternative is dangling — sensible-browser fallback is broken"
+        )
+
     def test_xrdp_in_ssl_cert_group(self, distro):
         result = _run(run_wsl(distro, "id -nG xrdp 2>/dev/null"))
         assert "ssl-cert" in result.output.split(), (

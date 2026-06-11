@@ -649,6 +649,47 @@ class TestXrdp:
             result = await enable_xrdp_service()
             assert not result.ok
 
+    async def test_configure_default_browser_snap_firefox(self):
+        from linwin.linux.tasks.xrdp import configure_default_browser
+        commands = []
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            commands.append(cmd)
+            if "test -x /snap/bin/firefox" in cmd:
+                return _ok("yes")
+            if "test -x" in cmd:
+                return _ok("no")
+            if "grep -qx" in cmd:
+                return _ok("no")  # not yet configured
+            return _ok()
+
+        with patch("linwin.linux.tasks.xrdp.run_local", side_effect=mock_run):
+            result = await configure_default_browser()
+        assert result.ok and not result.skipped
+        applied = commands[-1]
+        assert "WebBrowser=firefox" in applied
+        assert "x-www-browser /snap/bin/firefox" in applied
+
+    async def test_configure_default_browser_already_configured(self):
+        from linwin.linux.tasks.xrdp import configure_default_browser
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            if "test -x /snap/bin/firefox" in cmd:
+                return _ok("yes")
+            if "grep -qx" in cmd:
+                return _ok("yes")
+            return _ok("no")
+
+        with patch("linwin.linux.tasks.xrdp.run_local", side_effect=mock_run):
+            result = await configure_default_browser()
+        assert result.ok and result.skipped
+
+    async def test_configure_default_browser_none_installed(self):
+        from linwin.linux.tasks.xrdp import configure_default_browser
+        with patch("linwin.linux.tasks.xrdp.run_local", new_callable=AsyncMock, return_value=_ok("no")):
+            result = await configure_default_browser()
+        assert result.ok and result.skipped
+
     async def test_enable_xrdp_service_prerequisite_failure_propagates(self):
         from linwin.shared.task_result import TaskResult
         from linwin.linux.tasks.xrdp import enable_xrdp_service
