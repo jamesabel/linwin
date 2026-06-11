@@ -92,7 +92,11 @@ class TestWindowsAppStartup:
         ):
             async with app.run_test(size=(80, 24)) as pilot:
                 await pilot.pause()
-                # App should exit gracefully, not crash
+                # App should exit gracefully with an error code, not crash.
+                assert app.return_code == 1
+                # Drop the "Verification failed — see log for details" exit
+                # message so it doesn't masquerade as a failure in pytest output.
+                app._exit_renderables.clear()
 
 
 class TestLinuxMain:
