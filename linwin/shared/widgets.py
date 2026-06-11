@@ -259,6 +259,14 @@ class TaskListWidget(Widget):
         except Exception:
             pass
 
+    def set_detail(self, task_id: str, detail: str) -> None:
+        """Set or clear (with "") the dimmed detail text next to a task's name."""
+        try:
+            row = self.query_one(f"#task-{task_id}", TaskRow)
+            row.detail = detail
+        except Exception:
+            pass
+
     def set_all_pending(self) -> None:
         for row in self.query(TaskRow):
             row.status = "pending"

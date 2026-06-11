@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -292,12 +293,34 @@ class SetupScreen(ClickDispatchScreen):
         async def on_task_update(task_id: str, task_status: str) -> None:
             log.write_info(f"  [{task_id}] {task_status}")
 
+        def activity_ticker(task_id: str):
+            """Show the latest raw output line on the task row (throttled).
+
+            The raw apt/snap stream is far too chatty for the log pane —
+            it would scroll all the status history away — so it renders
+            as a one-line ticker next to the running task instead.
+            """
+            state = {"last": 0.0}
+
+            async def on_output(line: str) -> None:
+                now = time.monotonic()
+                text = line.strip()
+                if text and now - state["last"] >= 0.25:
+                    state["last"] = now
+                    tasks.set_detail(task_id, text[:80])
+
+            return on_output
+
         async def linux_systemd_step() -> bool:
             log.write_command("Running Linux setup: enable systemd...")
             tasks.set_status("linux_systemd", "running")
-            lp1 = await run_linux_headless(config, "enable-systemd", script_dir, on_line, on_task_update)
-            tasks.set_status("linux_systemd", "done" if lp1.success else "failed")
-            if not lp1.success:
+            lp1 = await run_linux_headless(config, "enable-systemd", script_dir, on_line,
+                                           on_task_update, activity_ticker("linux_systemd"))
+            if lp1.success:
+                tasks.set_detail("linux_systemd", "")
+                tasks.set_status("linux_systemd", "done")
+            else:
+                tasks.set_status("linux_systemd", "failed")
                 log.write_error("Linux enable-systemd failed")
                 status.update("[red]Linux setup: enable systemd failed.[/]")
                 return False
@@ -312,18 +335,23 @@ class SetupScreen(ClickDispatchScreen):
         async def linux_packages_step() -> bool:
             log.write_command("Running Linux setup: install packages...")
             tasks.set_status("linux_packages", "running")
+            on_output = activity_ticker("linux_packages")
             max_retries = 2
             lp2 = None
             for attempt in range(1, max_retries + 1):
-                lp2 = await run_linux_headless(config, "install-packages", script_dir, on_line, on_task_update)
+                lp2 = await run_linux_headless(config, "install-packages", script_dir, on_line,
+                                               on_task_update, on_output)
                 if lp2.success:
                     break
                 if attempt < max_retries:
                     flog.warning("Linux install-packages attempt %d failed, retrying...", attempt)
                     log.write_info(f"Install packages attempt {attempt} failed, retrying...")
                     await asyncio.sleep(5)
-            tasks.set_status("linux_packages", "done" if lp2.success else "failed")
-            if not lp2.success:
+            if lp2.success:
+                tasks.set_detail("linux_packages", "")
+                tasks.set_status("linux_packages", "done")
+            else:
+                tasks.set_status("linux_packages", "failed")
                 log.write_error("Linux install-packages failed")
                 status.update("[yellow]Linux package installation had issues. Run verification to check.[/]")
             return True
@@ -331,14 +359,17 @@ class SetupScreen(ClickDispatchScreen):
         async def linux_xrdp_step() -> bool:
             log.write_command("Running Linux setup: configure xrdp...")
             tasks.set_status("linux_xrdp", "running")
-            lp3 = await run_linux_headless(config, "configure-xrdp", script_dir, on_line, on_task_update)
-            tasks.set_status("linux_xrdp", "done" if lp3.success else "failed")
-            if not lp3.success:
-                log.write_error("Linux configure-xrdp failed")
-                status.update("[yellow]xrdp configuration had issues. Run verification to check.[/]")
-            else:
+            lp3 = await run_linux_headless(config, "configure-xrdp", script_dir, on_line,
+                                           on_task_update, activity_ticker("linux_xrdp"))
+            if lp3.success:
+                tasks.set_detail("linux_xrdp", "")
+                tasks.set_status("linux_xrdp", "done")
                 log.write_success("All tasks complete!")
                 status.update("[green]Setup complete! Run verification to confirm.[/]")
+            else:
+                tasks.set_status("linux_xrdp", "failed")
+                log.write_error("Linux configure-xrdp failed")
+                status.update("[yellow]xrdp configuration had issues. Run verification to check.[/]")
             return True
 
         # ── Flow definition ──────────────────────────────────────

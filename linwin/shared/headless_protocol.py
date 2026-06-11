@@ -10,7 +10,12 @@ Format::
 
     TASK:<task_id>:<status>   — task lifecycle event (running/done/skipped/failed)
     LOG:<message>             — informational log line
+    OUT:<line>                — raw subprocess output (apt, snap, ...)
     ERROR:<message>           — error log line
+
+OUT is kept distinct from LOG so consumers can show step messages in a
+log pane while rendering the high-volume raw output as a transient
+activity ticker instead of flooding the pane.
 
 The status never contains ``:`` but a task id may (e.g. apt package
 ``libc6:i386``), so TASK lines are split from the right.
@@ -40,6 +45,12 @@ def emit_log(msg: str) -> None:
     print(f"LOG:{msg}", flush=True)
 
 
+def emit_output(line: str) -> None:
+    """Write a raw subprocess output line (high volume, debug-logged only)."""
+    _log.debug("OUT: %s", line)
+    print(f"OUT:{line}", flush=True)
+
+
 def emit_error(msg: str) -> None:
     """Write an ERROR line to stdout and the file logger.
 
@@ -55,6 +66,7 @@ def emit_error(msg: str) -> None:
 # ── Decoding (consumer side) ────────────────────────────────────────
 
 TaskUpdateCallback = Callable[[str, str], Awaitable[None]]
+OutputCallback = Callable[[str], Awaitable[None]]
 
 
 async def parse_headless_line(
@@ -62,11 +74,13 @@ async def parse_headless_line(
     stream: str,
     on_line: LineCallback | None = None,
     on_task_update: TaskUpdateCallback | None = None,
+    on_output: OutputCallback | None = None,
 ) -> None:
     """Parse a single line of headless protocol output.
 
-    Routes TASK/LOG/ERROR prefixed lines to the appropriate callbacks
-    and passes unrecognised lines through to ``on_line``.
+    Routes TASK/LOG/OUT/ERROR prefixed lines to the appropriate
+    callbacks and passes unrecognised lines through to ``on_line``.
+    OUT lines fall back to ``on_line`` when no ``on_output`` is given.
     """
     if line.startswith("TASK:"):
         # Split the status from the right: task ids may contain ':'
@@ -74,6 +88,11 @@ async def parse_headless_line(
         task_id, sep, status = line[5:].rpartition(":")
         if sep and on_task_update:
             await on_task_update(task_id, status)
+    elif line.startswith("OUT:"):
+        if on_output:
+            await on_output(line[4:])
+        elif on_line:
+            await on_line(line[4:], stream)
     elif line.startswith("LOG:"):
         if on_line:
             await on_line(line[4:], "stdout")

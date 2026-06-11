@@ -41,6 +41,12 @@ class TestHeadlessProtocolEmit:
         captured = capsys.readouterr()
         assert "ERROR:Something failed" in captured.out
 
+    def test_emit_output(self, capsys):
+        from linwin.shared.headless_protocol import emit_output
+        emit_output("Unpacking xfce4 (4.18) ...")
+        captured = capsys.readouterr()
+        assert "OUT:Unpacking xfce4 (4.18) ..." in captured.out
+
 
 @pytest.mark.asyncio
 class TestHeadlessProtocolParse:
@@ -67,6 +73,22 @@ class TestHeadlessProtocolParse:
         on_line = AsyncMock()
         await parse_headless_line("some output", "stdout", on_line=on_line)
         on_line.assert_called_once_with("some output", "stdout")
+
+    async def test_parse_out_line_routes_to_on_output(self):
+        from linwin.shared.headless_protocol import parse_headless_line
+        on_line = AsyncMock()
+        on_output = AsyncMock()
+        await parse_headless_line("OUT:Unpacking xrdp ...", "stdout",
+                                  on_line=on_line, on_output=on_output)
+        on_output.assert_called_once_with("Unpacking xrdp ...")
+        # Raw output must NOT reach the log-pane callback
+        on_line.assert_not_called()
+
+    async def test_parse_out_line_falls_back_to_on_line(self):
+        from linwin.shared.headless_protocol import parse_headless_line
+        on_line = AsyncMock()
+        await parse_headless_line("OUT:Unpacking xrdp ...", "stdout", on_line=on_line)
+        on_line.assert_called_once_with("Unpacking xrdp ...", "stdout")
 
     async def test_parse_task_malformed(self):
         from linwin.shared.headless_protocol import parse_headless_line

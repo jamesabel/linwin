@@ -6,7 +6,7 @@ import base64
 import json
 
 from ...shared.config import SetupConfig
-from ...shared.headless_protocol import TaskUpdateCallback, parse_headless_line
+from ...shared.headless_protocol import OutputCallback, TaskUpdateCallback, parse_headless_line
 from ...shared.subprocess_runner import LineCallback, SubprocessResult, run_wsl
 
 # Generous ceiling for a full apt/snap install pass; without one a
@@ -20,6 +20,7 @@ async def run_linux_headless(
     script_dir_win: str,
     on_line: LineCallback | None = None,
     on_task_update: TaskUpdateCallback | None = None,
+    on_output: OutputCallback | None = None,
 ) -> SubprocessResult:
     """Invoke ``python3 -m linwin.linux --headless --step <step>`` inside WSL.
 
@@ -34,7 +35,7 @@ async def run_linux_headless(
     cmd = f"python3 -m linwin.linux --headless --step {step} --config-b64 {config_b64}"
 
     async def on_headless_line(line: str, stream: str) -> None:
-        await parse_headless_line(line, stream, on_line, on_task_update)
+        await parse_headless_line(line, stream, on_line, on_task_update, on_output)
 
     # Pass the Windows path directly — wsl.exe --cd accepts Windows paths
     # and is more reliable than /mnt/ paths which can trigger ERROR_PATH_NOT_FOUND.

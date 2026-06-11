@@ -18,7 +18,7 @@ import json
 import sys
 
 from ..shared.config import SetupConfig
-from ..shared.headless_protocol import emit_error, emit_log, emit_task
+from ..shared.headless_protocol import emit_error, emit_log, emit_output, emit_task
 from ..shared.setup_logging import setup_logging
 
 
@@ -37,13 +37,15 @@ def find_config() -> dict:
 
 
 async def _emit_output_line(line: str, stream: str) -> None:
-    """Relay live subprocess output (apt, snap, ...) as LOG lines.
+    """Relay live subprocess output (apt, snap, ...) as OUT lines.
 
     Long steps like apt upgrade run for minutes — without this the
     Windows TUI shows nothing between 'running' and 'done' and looks
-    stuck.
+    stuck. OUT (not LOG) keeps the high-volume stream out of the
+    consumer's log pane; the Windows side renders it as a one-line
+    activity ticker.
     """
-    emit_log(line)
+    emit_output(line)
 
 
 def headless_enable_systemd(config: SetupConfig) -> int:
