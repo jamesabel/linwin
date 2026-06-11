@@ -649,6 +649,22 @@ class TestXrdp:
             result = await enable_xrdp_service()
             assert not result.ok
 
+    async def test_enable_xrdp_service_prerequisite_failure_propagates(self):
+        from linwin.shared.task_result import TaskResult
+        from linwin.linux.tasks.xrdp import enable_xrdp_service
+        ok = TaskResult(ok=True, message="ok")
+        with patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.create_systemd_overrides", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.configure_colord_polkit", new_callable=AsyncMock,
+                   return_value=TaskResult(ok=False, message="tee failed")), \
+             patch("linwin.linux.tasks.xrdp.configure_logind_delay", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.enable_user_linger", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.mask_gdm", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.run_local", new_callable=AsyncMock, return_value=_ok()):
+            result = await enable_xrdp_service()
+            assert not result.ok
+            assert "colord polkit rule" in result.message
+
     async def test_check_xrdp_running_true(self):
         from linwin.linux.tasks.xrdp import check_xrdp_running
         with patch("linwin.linux.tasks.xrdp.run_local", new_callable=AsyncMock, return_value=_ok("active")):

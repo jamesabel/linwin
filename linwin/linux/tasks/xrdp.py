@@ -128,7 +128,9 @@ async def configure_colord_polkit(on_line: LineCallback | None = None) -> TaskRe
     /etc/polkit-1/rules.d/ (the older .pkla format is not supported).
     """
     rules_file = "/etc/polkit-1/rules.d/45-allow-colord.rules"
-    check = await run_local(f"test -f {rules_file} && echo yes || echo no", on_line, timeout=30)
+    # rules.d is mode 750 root:polkitd — an unprivileged test -f cannot
+    # see into it and would always report the rule missing.
+    check = await run_local(f"sudo test -f {rules_file} && echo yes || echo no", on_line, timeout=30)
     if check.output.strip() == "yes":
         return TaskResult(ok=True, message="colord polkit rule already present", skipped=True)
 
@@ -304,19 +306,32 @@ async def mask_gdm(on_line: LineCallback | None = None) -> TaskResult:
 
 
 async def enable_xrdp_service(on_line: LineCallback | None = None) -> TaskResult:
-    """Enable and start the xrdp service."""
-    # Ensure xrdp can read the TLS key before starting
-    await fix_xrdp_ssl_permissions(on_line)
-    # Create systemd overrides to prevent restart loops
-    await create_systemd_overrides(on_line)
-    # Allow colord D-Bus calls so the desktop doesn't crash on interaction
-    await configure_colord_polkit(on_line)
-    # Prevent logind from killing user services prematurely
-    await configure_logind_delay(on_line)
-    # Keep user manager alive even without logind sessions
-    await enable_user_linger(on_line)
-    # Prevent GDM from interfering with xrdp sessions
-    await mask_gdm(on_line)
+    """Enable and start the xrdp service.
+
+    Every prerequisite below is required for a working session — a
+    failure in any of them must fail the step, not vanish silently.
+    """
+    prerequisites = [
+        # Ensure xrdp can read the TLS key before starting
+        ("ssl-cert group", fix_xrdp_ssl_permissions),
+        # Create systemd overrides to prevent restart loops
+        ("systemd overrides", create_systemd_overrides),
+        # Allow colord D-Bus calls so the desktop doesn't crash on interaction
+        ("colord polkit rule", configure_colord_polkit),
+        # Prevent logind from killing user services prematurely
+        ("logind delay", configure_logind_delay),
+        # Keep user manager alive even without logind sessions
+        ("user linger", enable_user_linger),
+        # Prevent GDM from interfering with xrdp sessions
+        ("GDM mask", mask_gdm),
+    ]
+    failures = []
+    for name, prerequisite in prerequisites:
+        r = await prerequisite(on_line)
+        if not r.ok:
+            failures.append(f"{name}: {r.message}")
+    if failures:
+        return TaskResult(ok=False, message="xrdp prerequisites failed — " + "; ".join(failures))
 
     result = await run_local("sudo systemctl enable --now xrdp", on_line, timeout=120)
     if result.success:

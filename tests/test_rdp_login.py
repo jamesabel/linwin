@@ -134,9 +134,11 @@ class TestRdpPrerequisites:
         colord D-Bus activation that demands polkit auth, which fails
         (no agent in xrdp) and crashes the session.
         Ubuntu 24.04 uses polkit 124+ (JavaScript rules)."""
+        # rules.d is mode 750 root:polkitd — must check as root or the
+        # file is invisible and this reports a false negative.
         result = _run(run_wsl(
             distro,
-            "test -f /etc/polkit-1/rules.d/45-allow-colord.rules"
+            "sudo test -f /etc/polkit-1/rules.d/45-allow-colord.rules"
             " && echo yes || echo no",
         ))
         assert result.output.strip() == "yes", (
