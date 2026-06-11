@@ -29,16 +29,15 @@ def _runner(result: SubprocessResult):
 class TestBatchHelpers:
     async def test_check_apt_packages_mixed(self):
         from linwin.shared.verify_checks import check_apt_packages
-        runner = _runner(_ok(
-            "nautilus install ok installed\n"
-            "xrdp install ok installed\n"
-            "gone deinstall ok config-files\n"
-        ))
-        states = await check_apt_packages(runner, ["nautilus", "xrdp", "gone", "missing"])
-        assert states == {"nautilus": True, "xrdp": True, "gone": False, "missing": False}
-        # One subprocess for the whole batch
+        # The grep '^ii' pipeline emits one installed package name per line
+        runner = _runner(_ok("nautilus\nxrdp\n"))
+        states = await check_apt_packages(runner, ["nautilus", "xrdp", "missing"])
+        assert states == {"nautilus": True, "xrdp": True, "missing": False}
+        # One subprocess for the whole batch, and no '$' — the wsl.exe
+        # relay expands $ even inside single quotes.
         assert len(runner.commands) == 1
-        assert "dpkg-query" in runner.commands[0]
+        assert "dpkg -l" in runner.commands[0]
+        assert "$" not in runner.commands[0]
 
     async def test_check_apt_packages_empty(self):
         from linwin.shared.verify_checks import check_apt_packages
@@ -52,6 +51,7 @@ class TestBatchHelpers:
         states = await check_snap_packages(runner, ["code", "gimp"])
         assert states == {"code": True, "gimp": False}
         assert len(runner.commands) == 1
+        assert "$" not in runner.commands[0]
 
     async def test_check_snap_packages_empty(self):
         from linwin.shared.verify_checks import check_snap_packages

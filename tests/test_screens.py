@@ -233,6 +233,13 @@ class TestVerifyScreen:
                 await pilot.pause()
                 # Verification must launch automatically when the screen opens.
                 mock_verify.assert_awaited()
+                await app.workers.wait_for_complete()
+                # Check results are copyable as plain text
+                text = screen.get_copy_text()
+                assert "PASS" in text and "WSL" in text and "systemd" in text
+                with patch.object(app, "copy_to_clipboard") as copy_mock:
+                    screen.action_copy_results()
+                copy_mock.assert_called_once_with(text)
 
 
 # ── Windows Config Editor ────────────────────────────────────────────

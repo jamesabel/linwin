@@ -64,6 +64,7 @@ class VerifyScreen(ClickDispatchScreen):
         for app in self._optional_apps:
             self._action_items.append((_app_action_name(app), f"Launch {app.display_name}"))
         self._action_items.append(("launch_terminal", "Open Ubuntu Terminal"))
+        self._action_items.append(("copy_results", "Copy Results to Clipboard"))
         self._action_items.append(("quit", "Exit"))
 
     def on_mount(self) -> None:
@@ -126,6 +127,16 @@ class VerifyScreen(ClickDispatchScreen):
 
     def action_launch_terminal(self) -> None:
         launch_windows_terminal()
+
+    def get_copy_text(self) -> str:
+        """Check results as plain text (used by copy actions / Ctrl+C)."""
+        win = self.query_one("#win-verify", VerifyDashboard)
+        linux = self.query_one("#linux-verify", VerifyDashboard)
+        return f"{win.get_text()}\n\n{linux.get_text()}"
+
+    def action_copy_results(self) -> None:
+        self.app.copy_to_clipboard(self.get_copy_text())
+        self.app.notify("Verification results copied to clipboard")
 
     def action_quit(self) -> None:
         self.app.exit()

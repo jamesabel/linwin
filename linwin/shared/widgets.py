@@ -368,6 +368,7 @@ class VerifyDashboard(Widget):
         self._passed = 0
         self._failed = 0
         self._warnings = 0
+        self._rows: list[tuple[str, str, str]] = []
 
     def compose(self) -> ComposeResult:
         yield Static(f"[bold]{self._title}[/]")
@@ -379,6 +380,7 @@ class VerifyDashboard(Widget):
     def add_check(self, name: str, passed: bool, detail: str = "", warn: bool = False) -> None:
         tag = "WARN" if warn else ("PASS" if passed else "FAIL")
         get_logger().info("VERIFY %-6s %s  %s", tag, name, detail)
+        self._rows.append((tag, name, detail))
         table = self.query_one(DataTable)
         if warn:
             status = "[yellow]WARN[/]"
@@ -401,6 +403,20 @@ class VerifyDashboard(Widget):
             f"[yellow]{self._warnings} warnings[/] "
             f"({total} total)"
         )
+
+    def get_text(self) -> str:
+        """Return all check results as plain text (for clipboard copy)."""
+        lines = [self._title]
+        for tag, name, detail in self._rows:
+            line = f"  {tag:<4}  {name}"
+            if detail:
+                line += f"  ({detail})"
+            lines.append(line)
+        lines.append(
+            f"{self._passed} passed, {self._failed} failed, "
+            f"{self._warnings} warnings"
+        )
+        return "\n".join(lines)
 
     @property
     def all_passed(self) -> bool:
