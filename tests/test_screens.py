@@ -201,12 +201,14 @@ class TestVerifyScreen:
             VerifyCheckItem("systemd", True, category="linux"),
         ])
 
-        with patch("linwin.windows.tasks.full_verify.run_full_verification",
-                   new_callable=AsyncMock, return_value=mock_result):
+        with patch("linwin.windows.screens.verify.run_full_verification",
+                   new_callable=AsyncMock, return_value=mock_result) as mock_verify:
             async with app.run_test(size=(80, 24)) as pilot:
                 screen = VerifyScreen(config)
                 app.push_screen(screen)
                 await pilot.pause()
+                # Verification must launch automatically when the screen opens.
+                mock_verify.assert_awaited()
 
 
 # ── Windows Config Editor ────────────────────────────────────────────

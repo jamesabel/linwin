@@ -67,11 +67,12 @@ class VerifyScreen(ClickDispatchScreen):
         self._action_items.append(("quit", "Exit"))
 
     def on_mount(self) -> None:
-        """Bind alpha keys for actions."""
+        """Bind alpha keys for actions and start verification."""
         for i, (action, label) in enumerate(self._action_items):
             if i < 26:
                 key = string.ascii_lowercase[i]
                 self._bindings.bind(key, action, label)
+        self.run_verification()
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
@@ -85,10 +86,6 @@ class VerifyScreen(ClickDispatchScreen):
                     key = string.ascii_lowercase[i] if i < 26 else " "
                     options.append(f"[{key}] {label}")
                 yield OptionList(*options, id="verify-actions")
-
-    def on_screen_show(self) -> None:
-        """Run verification when first shown."""
-        self.run_verification()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Dispatch Enter-key selection from the OptionList."""

@@ -323,7 +323,7 @@ class TestVerifyScreenRemaining:
             VerifyCheckItem("systemd", False, category="linux"),
         ])
 
-        with patch("linwin.windows.tasks.full_verify.run_full_verification",
+        with patch("linwin.windows.screens.verify.run_full_verification",
                    new_callable=AsyncMock, return_value=mock_result):
             async with app.run_test(size=(80, 24)) as pilot:
                 screen = VerifyScreen(config)
