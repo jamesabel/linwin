@@ -625,9 +625,34 @@ class TestXrdp:
             result = await mask_gdm()
             assert not result.ok
 
+    async def test_fix_x11_socket_dir_already_writable(self):
+        from linwin.linux.tasks.xrdp import fix_x11_socket_dir
+        with patch("linwin.linux.tasks.xrdp.run_local", new_callable=AsyncMock, return_value=_ok("yes")):
+            result = await fix_x11_socket_dir()
+        assert result.ok and result.skipped
+
+    async def test_fix_x11_socket_dir_installs_unit(self):
+        from linwin.linux.tasks.xrdp import fix_x11_socket_dir
+        commands = []
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            commands.append(cmd)
+            if "test -w" in cmd:
+                return _ok("no")
+            return _ok()
+
+        with patch("linwin.linux.tasks.xrdp.run_local", side_effect=mock_run):
+            result = await fix_x11_socket_dir()
+        assert result.ok and not result.skipped
+        joined = "\n".join(commands)
+        # The boot script must keep WSLg's X0 reachable and remove the ro mount
+        assert "mount --bind" in joined and "umount" in joined
+        assert "systemctl enable --now linwin-x11-dir.service" in joined
+
     async def test_enable_xrdp_service_success(self):
         from linwin.linux.tasks.xrdp import enable_xrdp_service
-        with patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock), \
+        with patch("linwin.linux.tasks.xrdp.fix_x11_socket_dir", new_callable=AsyncMock), \
+             patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.create_systemd_overrides", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.configure_colord_polkit", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.configure_logind_delay", new_callable=AsyncMock), \
@@ -639,7 +664,8 @@ class TestXrdp:
 
     async def test_enable_xrdp_service_failure(self):
         from linwin.linux.tasks.xrdp import enable_xrdp_service
-        with patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock), \
+        with patch("linwin.linux.tasks.xrdp.fix_x11_socket_dir", new_callable=AsyncMock), \
+             patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.create_systemd_overrides", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.configure_colord_polkit", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.configure_logind_delay", new_callable=AsyncMock), \
@@ -694,7 +720,8 @@ class TestXrdp:
         from linwin.shared.task_result import TaskResult
         from linwin.linux.tasks.xrdp import enable_xrdp_service
         ok = TaskResult(ok=True, message="ok")
-        with patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock, return_value=ok), \
+        with patch("linwin.linux.tasks.xrdp.fix_x11_socket_dir", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock, return_value=ok), \
              patch("linwin.linux.tasks.xrdp.create_systemd_overrides", new_callable=AsyncMock, return_value=ok), \
              patch("linwin.linux.tasks.xrdp.configure_colord_polkit", new_callable=AsyncMock,
                    return_value=TaskResult(ok=False, message="tee failed")), \

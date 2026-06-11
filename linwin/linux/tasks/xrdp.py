@@ -312,6 +312,8 @@ async def enable_xrdp_service(on_line: LineCallback | None = None) -> TaskResult
     failure in any of them must fail the step, not vanish silently.
     """
     prerequisites = [
+        # Writable /tmp/.X11-unix so Xorg makes real sockets snaps can use
+        ("X11 socket dir", fix_x11_socket_dir),
         # Ensure xrdp can read the TLS key before starting
         ("ssl-cert group", fix_xrdp_ssl_permissions),
         # Create systemd overrides to prevent restart loops
@@ -337,6 +339,82 @@ async def enable_xrdp_service(on_line: LineCallback | None = None) -> TaskResult
     if result.success:
         return TaskResult(ok=True, message="xrdp service enabled and started")
     return TaskResult(ok=False, message="Failed to enable xrdp service")
+
+
+_X11_FIX_SCRIPT = "/usr/local/sbin/linwin-x11-dir.sh"
+_X11_FIX_UNIT = "/etc/systemd/system/linwin-x11-dir.service"
+
+
+async def fix_x11_socket_dir(on_line: LineCallback | None = None) -> TaskResult:
+    """Make /tmp/.X11-unix writable so xrdp's Xorg creates a real socket.
+
+    WSLg mounts /tmp/.X11-unix as a READ-ONLY tmpfs containing only X0,
+    so xrdp's Xorg can only bind the abstract socket @/tmp/.X11-unix/X10.
+    Snap-confined apps (firefox, chromium) are denied abstract X sockets
+    by AppArmor and fail with "cannot open display :10". Replace the
+    read-only mount with a writable dir — keeping WSLg's X0 socket
+    available through a bind mount — and install a boot-time systemd
+    unit so the fix survives WSL restarts.
+    """
+    check = await run_local(
+        "test -w /tmp/.X11-unix"
+        " && systemctl is-enabled linwin-x11-dir.service > /dev/null 2>&1"
+        " && echo yes || echo no",
+        on_line,
+        timeout=30,
+    )
+    if check.output.strip() == "yes":
+        return TaskResult(ok=True, message="X11 socket dir already writable", skipped=True)
+
+    script = (
+        f"sudo tee {_X11_FIX_SCRIPT} > /dev/null << 'EOF'\n"
+        "#!/bin/sh\n"
+        "# linwin: make /tmp/.X11-unix writable so xrdp's Xorg can create a\n"
+        "# real socket (snap apps cannot use the abstract fallback), keeping\n"
+        "# WSLg's X0 available via a bind mount.\n"
+        "DIR=/tmp/.X11-unix\n"
+        "WSLG_X0=/mnt/wslg/.X11-unix/X0\n"
+        'if mount | grep -q "on ${DIR} type tmpfs (ro"; then\n'
+        '    umount "${DIR}" 2>/dev/null || exit 0\n'
+        "fi\n"
+        'mkdir -p "${DIR}"\n'
+        'chmod 1777 "${DIR}"\n'
+        'if [ -S "${WSLG_X0}" ] && [ ! -e "${DIR}/X0" ]; then\n'
+        '    touch "${DIR}/X0"\n'
+        '    mount --bind "${WSLG_X0}" "${DIR}/X0"\n'
+        "fi\n"
+        "exit 0\n"
+        "EOF"
+    )
+    unit = (
+        f"sudo tee {_X11_FIX_UNIT} > /dev/null << 'EOF'\n"
+        "[Unit]\n"
+        "Description=linwin: writable /tmp/.X11-unix for xrdp + snap apps\n"
+        "After=local-fs.target\n"
+        "Before=xrdp-sesman.service xrdp.service\n"
+        "\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        f"ExecStart={_X11_FIX_SCRIPT}\n"
+        "RemainAfterExit=yes\n"
+        "\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+        "EOF"
+    )
+    r1 = await run_local(script, on_line, timeout=60)
+    r2 = await run_local(unit, on_line, timeout=60)
+    if not (r1.success and r2.success):
+        return TaskResult(ok=False, message="Failed to write the X11 socket dir fix")
+    r3 = await run_local(
+        f"sudo chmod +x {_X11_FIX_SCRIPT} && sudo systemctl daemon-reload && "
+        "sudo systemctl enable --now linwin-x11-dir.service",
+        on_line,
+        timeout=120,
+    )
+    if r3.success:
+        return TaskResult(ok=True, message="X11 socket dir made writable for xrdp sessions")
+    return TaskResult(ok=False, message="Failed to enable the X11 socket dir fix service")
 
 
 # Candidate browser launchers, in preference order, mapped to the XFCE

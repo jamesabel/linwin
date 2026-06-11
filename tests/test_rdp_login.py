@@ -188,6 +188,25 @@ class TestRdpPrerequisites:
             "x-www-browser alternative is dangling — sensible-browser fallback is broken"
         )
 
+    def test_x11_socket_dir_writable(self, distro):
+        """/tmp/.X11-unix must be writable for xrdp sessions.
+
+        WSLg mounts it read-only, which forces xrdp's Xorg onto an
+        abstract socket that snap-confined apps (firefox, chromium)
+        cannot reach — they fail with 'cannot open display :10'.
+        """
+        r = _run(run_wsl(distro, "test -w /tmp/.X11-unix && echo yes || echo no"))
+        assert r.output.strip() == "yes", (
+            "/tmp/.X11-unix is read-only — snap apps cannot open the xrdp display"
+        )
+        r = _run(run_wsl(distro, "systemctl is-enabled linwin-x11-dir.service 2>/dev/null"))
+        assert r.output.strip() == "enabled", (
+            "linwin-x11-dir.service not enabled — the writable X11 dir won't survive a WSL restart"
+        )
+        # WSLg's X0 must still be reachable after the remount
+        r = _run(run_wsl(distro, "test -S /tmp/.X11-unix/X0 && echo yes || echo no"))
+        assert r.output.strip() == "yes", "WSLg X0 socket lost by the X11 dir fix"
+
     def test_xrdp_in_ssl_cert_group(self, distro):
         result = _run(run_wsl(distro, "id -nG xrdp 2>/dev/null"))
         assert "ssl-cert" in result.output.split(), (
