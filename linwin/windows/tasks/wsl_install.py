@@ -124,9 +124,30 @@ async def import_distro(config: SetupConfig, tar_path: str, on_line: LineCallbac
     return TaskResult(False, "Import failed")
 
 
+async def user_exists(config: SetupConfig, username: str, on_line: LineCallback | None = None) -> bool:
+    """Check that a user has an actual passwd entry in the distro."""
+    result = await run_wsl(
+        config.distroImportName,
+        f"getent passwd '{username}' > /dev/null 2>&1 && echo yes || echo no",
+        on_line=on_line,
+        timeout=60,
+    )
+    return result.output.strip() == "yes"
+
+
 async def detect_default_user(config: SetupConfig, on_line: LineCallback | None = None) -> str | None:
-    """Detect the non-root user from /home/ inside the distro."""
-    result = await run_wsl(config.distroImportName, "ls /home/ 2>/dev/null", on_line=on_line, timeout=60)
+    """Detect a non-root user from /home/ inside the distro.
+
+    Only returns users with a passwd entry — a /home directory alone can
+    be a leftover from a deleted account, and making it the WSL default
+    breaks every invocation with getpwnam errors.
+    """
+    result = await run_wsl(
+        config.distroImportName,
+        'for u in $(ls /home/ 2>/dev/null); do getent passwd "$u" > /dev/null 2>&1 && echo "$u"; done',
+        on_line=on_line,
+        timeout=60,
+    )
     if result.success and result.stdout_lines:
         users = [u.strip() for u in result.stdout_lines if u.strip() and u.strip() != "root"]
         return users[0] if users else None
