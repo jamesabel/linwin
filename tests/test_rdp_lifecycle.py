@@ -12,7 +12,6 @@ repeated TWICE, verifying:
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import tempfile
 import time
@@ -22,7 +21,12 @@ import pytest
 import linwin.shared.launcher as launcher_mod
 from linwin.shared.launcher import ensure_wsl_keepalive
 from linwin.shared.subprocess_runner import run_command, run_wsl
-from .helpers import _run, _cert_flag, _collect_diagnostics, _recv_exact
+from .helpers import (
+    _assert_xrdp_accepts_connections,
+    _cert_flag,
+    _collect_diagnostics,
+    _run,
+)
 
 TEMP_PASSWORD = "TempRdpLifecycleTest2024x"
 SESSION_STABILITY_SECS = 15
@@ -151,29 +155,6 @@ def ensure_xvfb(distro, production_keepalive):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _assert_xrdp_accepts_connections(xrdp_port: int):
-    """Assert xrdp accepts TCP + X.224 + TLS from Windows."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(10)
-    try:
-        sock.connect(("localhost", xrdp_port))
-        cookie = b"Cookie: mstshash=test\r\n"
-        rdp_neg_req = bytes([0x01, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00, 0x00])
-        variable = cookie + rdp_neg_req
-        li = 6 + len(variable)
-        x224_cr = bytes([li, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00]) + variable
-        tpkt_len = 4 + len(x224_cr)
-        tpkt = bytes([0x03, 0x00, (tpkt_len >> 8) & 0xFF, tpkt_len & 0xFF])
-        sock.sendall(tpkt + x224_cr)
-        resp_hdr = _recv_exact(sock, 4)
-        assert resp_hdr[0] == 3, f"Bad TPKT version: {resp_hdr[0]}"
-        resp_len = (resp_hdr[2] << 8) | resp_hdr[3]
-        body = _recv_exact(sock, resp_len - 4)
-        assert body[1] == 0xD0, f"Expected X.224 CC (0xD0), got 0x{body[1]:02X}"
-    finally:
-        sock.close()
-
 
 def _assert_wsl_vm_alive(distro: str):
     """Assert the WSL VM is still alive by running a trivial command."""
@@ -378,11 +359,11 @@ class TestRdpLifecycle:
         for attempt, label in enumerate(["lifecycle_s1", "lifecycle_s2"], 1):
             # -- Pre-session: verify xrdp accepts connections --
             try:
-                _assert_xrdp_accepts_connections(xrdp_port)
+                _assert_xrdp_accepts_connections(distro, xrdp_port)
             except Exception:
                 time.sleep(3)
                 try:
-                    _assert_xrdp_accepts_connections(xrdp_port)
+                    _assert_xrdp_accepts_connections(distro, xrdp_port)
                 except Exception as e2:
                     failures.append(
                         f"Session {attempt} ({label}): xrdp not accepting "
@@ -459,7 +440,7 @@ class TestRdpLifecycle:
         assert r.output.strip() == "active", (
             f"xrdp-sesman not active after lifecycle test: {r.output.strip()}"
         )
-        _assert_xrdp_accepts_connections(xrdp_port)
+        _assert_xrdp_accepts_connections(distro, xrdp_port)
 
     def test_vm_alive_after_all_sessions(self, distro, production_keepalive):
         """The WSL VM must still be alive after all sessions and test cleanup."""
