@@ -5,6 +5,7 @@ from __future__ import annotations
 from ...shared.config import SnapPackage
 from ...shared.subprocess_runner import LineCallback, run_local
 from ...shared.task_result import TaskResult
+from .apt import APT_ENV, APT_OPTS
 
 
 async def check_systemd_running(on_line: LineCallback | None = None) -> bool:
@@ -26,7 +27,9 @@ async def ensure_snapd(on_line: LineCallback | None = None) -> TaskResult:
     # Check if snap command exists
     result = await run_local("command -v snap > /dev/null 2>&1 && echo yes || echo no", on_line, timeout=30)
     if result.output.strip() != "yes":
-        install = await run_local("sudo apt install -y snapd", on_line, timeout=120)
+        install = await run_local(
+            f"sudo {APT_ENV} apt install -y {APT_OPTS} snapd", on_line, timeout=600,
+        )
         if not install.success:
             return TaskResult(ok=False, message="Failed to install snapd")
 

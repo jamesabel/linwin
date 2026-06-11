@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ...shared.subprocess_runner import LineCallback, run_local
 from ...shared.task_result import TaskResult
-from .apt import is_apt_installed
+from .apt import APT_ENV, APT_OPTS, is_apt_installed
 
 
 async def is_xrdp_installed(on_line: LineCallback | None = None) -> bool:
@@ -30,7 +30,7 @@ async def install_xrdp(on_line: LineCallback | None = None) -> TaskResult:
         return TaskResult(ok=True, message="xrdp packages already installed", skipped=True)
 
     result = await run_local(
-        f"sudo apt install -y {XRDP_PACKAGES}", on_line, timeout=1800,
+        f"sudo {APT_ENV} apt install -y {APT_OPTS} {XRDP_PACKAGES}", on_line, timeout=1800,
     )
     if result.success:
         return TaskResult(ok=True, message="xrdp and xfce4 installed")
