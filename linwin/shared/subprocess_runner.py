@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -40,11 +41,23 @@ async def run_command(
     log.info("RUN: %s", cmd_str)
     t0 = time.monotonic()
 
+    env = None
+    if args and os.path.basename(args[0]).lower() in ("wsl.exe", "wsl"):
+        # Make wsl.exe emit UTF-8 instead of UTF-16LE so non-ASCII
+        # distro names survive decoding (the NUL-strip below only
+        # round-trips pure ASCII).
+        env = {**os.environ, "WSL_UTF8": "1"}
+
     proc = await asyncio.create_subprocess_exec(
         *args,
+        # No child may prompt on the TUI's terminal: without a usable
+        # stdin, sudo/OOBE-style prompts fail fast instead of hanging
+        # invisibly behind the raw-mode Textual screen.
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,
+        env=env,
     )
 
     stdout_lines: list[str] = []
@@ -123,6 +136,7 @@ async def run_wsl(
     command: str,
     on_line: LineCallback | None = None,
     cwd: str | None = None,
+    timeout: float | None = None,
 ) -> SubprocessResult:
     """Run a bash command inside a WSL distro.
 
@@ -130,12 +144,14 @@ async def run_wsl(
         cwd: Optional WSL path to set as working directory via --cd flag.
              Use this instead of ``cd '...' &&`` in the command string to
              avoid Windows command-line parsing issues with ``&&``.
+        timeout: Optional timeout in seconds; the awaiting flow must never
+             block forever on a wedged distro command.
     """
     args = ["wsl.exe", "-d", distro]
     if cwd:
         args.extend(["--cd", cwd])
     args.extend(["--", "bash", "-c", command])
-    return await run_command(args, on_line=on_line)
+    return await run_command(args, on_line=on_line, timeout=timeout)
 
 
 async def run_wsl_exec(

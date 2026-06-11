@@ -55,6 +55,39 @@ async def check_apt_package(runner: Runner, package: str) -> bool:
     return result.output.strip() == "yes"
 
 
+async def check_apt_packages(runner: Runner, packages: list[str]) -> dict[str, bool]:
+    """Check several apt packages with a single dpkg-query invocation.
+
+    One subprocess replaces one-per-package; the caller maps the result
+    back to per-package checks.
+    """
+    if not packages:
+        return {}
+    names = " ".join(packages)
+    result = await _run_with_retry(
+        runner,
+        f"dpkg-query -W -f='${{Package}} ${{Status}}\\n' {names} 2>/dev/null",
+    )
+    installed = set()
+    for line in result.stdout_lines:
+        parts = line.strip().split()
+        # "pkg install ok installed"
+        if len(parts) >= 4 and parts[-1] == "installed":
+            installed.add(parts[0])
+    return {p: p in installed for p in packages}
+
+
+async def check_snap_packages(runner: Runner, names: list[str]) -> dict[str, bool]:
+    """Check several snap packages with a single ``snap list`` invocation."""
+    if not names:
+        return {}
+    result = await _run_with_retry(
+        runner, "snap list 2>/dev/null | awk 'NR>1 {print $1}'"
+    )
+    installed = {line.strip() for line in result.stdout_lines if line.strip()}
+    return {n: n in installed for n in names}
+
+
 async def check_snap_package(runner: Runner, name: str) -> bool:
     """Check if a snap package is installed."""
     result = await _run_with_retry(

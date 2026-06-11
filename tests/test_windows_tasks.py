@@ -401,7 +401,7 @@ class TestWslInstall:
             if "echo ready" in cmd:
                 return _ok("ready")
             if "is-system-running" in cmd:
-                return SubprocessResult(0, ["running", "active", "active"])
+                return SubprocessResult(0, ["STATE:running", "XRDP:active", "SESMAN:active"])
             return _ok()
 
         with patch("linwin.windows.tasks.wsl_install.run_wsl", side_effect=mock_wsl), \

@@ -65,22 +65,21 @@ class TestLinuxSetupScreen:
         config = SetupConfig()
         config.enableSystemd = True
         config.aptPackages = ["nautilus"]
-        config.snaps = []
         app = BaseSetupApp(config)
 
         # Mock all Linux tasks to succeed quickly
-        with patch("linwin.linux.screens.setup.systemd.enable_systemd", new_callable=AsyncMock,
+        with patch("linwin.linux.tasks.systemd.enable_systemd", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="enabled", needs_restart=True)), \
-             patch("linwin.linux.screens.setup.apt.apt_update", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.apt.apt_update", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ok")), \
-             patch("linwin.linux.screens.setup.apt.apt_upgrade", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.apt.apt_upgrade", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ok")), \
-             patch("linwin.linux.screens.setup.apt.install_apt_package", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.apt.install_apt_package", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="installed", skipped=True)), \
-             patch("linwin.linux.screens.setup.snaps.check_systemd_running", new_callable=AsyncMock, return_value=True), \
-             patch("linwin.linux.screens.setup.snaps.ensure_snapd", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.snaps.check_systemd_running", new_callable=AsyncMock, return_value=True), \
+             patch("linwin.linux.tasks.snaps.ensure_snapd", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ready")), \
-             patch("linwin.linux.screens.setup.wslg.verify_wslg", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.wslg.verify_wslg", new_callable=AsyncMock,
                    return_value=MagicMock(display_set=True, display_value=":0", wslg_dir_exists=True, xeyes_works=True)):
             async with app.run_test(size=(80, 24)) as pilot:
                 screen = SetupScreen(config)
@@ -94,17 +93,16 @@ class TestLinuxSetupScreen:
         config = SetupConfig()
         config.enableSystemd = True
         config.aptPackages = []
-        config.snaps = []
         app = BaseSetupApp(config)
 
-        with patch("linwin.linux.screens.setup.systemd.enable_systemd", new_callable=AsyncMock,
+        with patch("linwin.linux.tasks.systemd.enable_systemd", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="already enabled", skipped=True)), \
-             patch("linwin.linux.screens.setup.apt.apt_update", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.apt.apt_update", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ok")), \
-             patch("linwin.linux.screens.setup.apt.apt_upgrade", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.apt.apt_upgrade", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ok")), \
-             patch("linwin.linux.screens.setup.snaps.check_systemd_running", new_callable=AsyncMock, return_value=False), \
-             patch("linwin.linux.screens.setup.wslg.verify_wslg", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.snaps.check_systemd_running", new_callable=AsyncMock, return_value=False), \
+             patch("linwin.linux.tasks.wslg.verify_wslg", new_callable=AsyncMock,
                    return_value=MagicMock(display_set=False, display_value="", wslg_dir_exists=False, xeyes_works=None)):
             async with app.run_test(size=(80, 24)) as pilot:
                 screen = SetupScreen(config)
@@ -118,19 +116,18 @@ class TestLinuxSetupScreen:
         config = SetupConfig()
         config.enableSystemd = False
         config.aptPackages = ["badpkg"]
-        config.snaps = []
         app = BaseSetupApp(config)
 
-        with patch("linwin.linux.screens.setup.apt.apt_update", new_callable=AsyncMock,
+        with patch("linwin.linux.tasks.apt.apt_update", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ok")), \
-             patch("linwin.linux.screens.setup.apt.apt_upgrade", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.apt.apt_upgrade", new_callable=AsyncMock,
                    return_value=TaskResult(ok=False, message="fail")), \
-             patch("linwin.linux.screens.setup.apt.install_apt_package", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.apt.install_apt_package", new_callable=AsyncMock,
                    return_value=TaskResult(ok=False, message="fail")), \
-             patch("linwin.linux.screens.setup.snaps.check_systemd_running", new_callable=AsyncMock, return_value=True), \
-             patch("linwin.linux.screens.setup.snaps.ensure_snapd", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.snaps.check_systemd_running", new_callable=AsyncMock, return_value=True), \
+             patch("linwin.linux.tasks.snaps.ensure_snapd", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ready")), \
-             patch("linwin.linux.screens.setup.wslg.verify_wslg", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.wslg.verify_wslg", new_callable=AsyncMock,
                    return_value=MagicMock(display_set=True, display_value=":0", wslg_dir_exists=True, xeyes_works=False)):
             async with app.run_test(size=(80, 24)) as pilot:
                 screen = SetupScreen(config)
@@ -140,24 +137,24 @@ class TestLinuxSetupScreen:
     async def test_setup_screen_with_snaps(self):
         from linwin.shared.base_app import BaseSetupApp
         from linwin.linux.screens.setup import SetupScreen
-        from linwin.shared.config import SnapPackage
+        from linwin.shared.config import AppEntry
 
         config = SetupConfig()
         config.enableSystemd = False
         config.aptPackages = []
-        config.snaps = [SnapPackage("code")]
+        config.optionalApps = [AppEntry("code", "VS Code", "code", "snap")]
         app = BaseSetupApp(config)
 
-        with patch("linwin.linux.screens.setup.apt.apt_update", new_callable=AsyncMock,
+        with patch("linwin.linux.tasks.apt.apt_update", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ok")), \
-             patch("linwin.linux.screens.setup.apt.apt_upgrade", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.apt.apt_upgrade", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ok")), \
-             patch("linwin.linux.screens.setup.snaps.check_systemd_running", new_callable=AsyncMock, return_value=True), \
-             patch("linwin.linux.screens.setup.snaps.ensure_snapd", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.snaps.check_systemd_running", new_callable=AsyncMock, return_value=True), \
+             patch("linwin.linux.tasks.snaps.ensure_snapd", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="ready")), \
-             patch("linwin.linux.screens.setup.snaps.install_snap", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.snaps.install_snap", new_callable=AsyncMock,
                    return_value=TaskResult(ok=True, message="installed", skipped=True)), \
-             patch("linwin.linux.screens.setup.wslg.verify_wslg", new_callable=AsyncMock,
+             patch("linwin.linux.tasks.wslg.verify_wslg", new_callable=AsyncMock,
                    return_value=MagicMock(display_set=True, display_value=":0", wslg_dir_exists=True, xeyes_works=None)):
             async with app.run_test(size=(80, 24)) as pilot:
                 screen = SetupScreen(config)

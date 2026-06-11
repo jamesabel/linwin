@@ -151,18 +151,36 @@ def run_elevated(command: str) -> bool:
     one command that needs admin, without relaunching the entire app.
     The elevated process runs hidden and the call blocks until it exits.
 
+    Blocking: callers on the event loop must wrap this in
+    ``asyncio.to_thread`` or the TUI freezes for the UAC + command
+    duration.
+
     Returns True if the command succeeded (exit code 0).
     """
     import subprocess
+    log = get_logger()
     # -Wait makes PowerShell block until the elevated process exits.
     # -WindowStyle Hidden keeps the admin window from flashing.
+    # -PassThru + exit $p.ExitCode propagate the elevated command's exit
+    # code; without it PowerShell exits 0 whenever UAC is accepted, even
+    # if the command itself failed. UAC denial throws -> catch -> exit 1.
     ps_cmd = (
-        f'Start-Process -FilePath "cmd.exe" '
+        f'try {{ $p = Start-Process -FilePath "cmd.exe" '
         f'-ArgumentList "/c {command}" '
-        f'-Verb RunAs -Wait -WindowStyle Hidden'
+        f'-Verb RunAs -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop; '
+        f'exit $p.ExitCode }} catch {{ exit 1 }}'
     )
+    log.info("RUN (elevated): %s", command)
     result = subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
         capture_output=True, text=True,
     )
+    if result.returncode == 0:
+        log.info("OK  (elevated, exit=0): %s", command)
+    else:
+        log.warning("FAIL (elevated, exit=%d): %s", result.returncode, command)
+        for stream_name, text in (("stdout", result.stdout), ("stderr", result.stderr)):
+            for line in (text or "").splitlines():
+                if line.strip():
+                    log.debug("  %s: %s", stream_name, line)
     return result.returncode == 0

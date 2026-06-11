@@ -43,6 +43,7 @@ async def configure_xrdp_port(port: int = 3390, on_line: LineCallback | None = N
     check = await run_local(
         f"grep -m1 '^port=' /etc/xrdp/xrdp.ini 2>/dev/null",
         on_line,
+        timeout=30,
     )
     if check.output.strip() == f"port={port}":
         return TaskResult(ok=True, message=f"xrdp port already {port}", skipped=True)
@@ -52,6 +53,7 @@ async def configure_xrdp_port(port: int = 3390, on_line: LineCallback | None = N
     result = await run_local(
         f"sudo sed -i '0,/^port=.*/s//port={port}/' /etc/xrdp/xrdp.ini",
         on_line,
+        timeout=60,
     )
     if result.success:
         return TaskResult(ok=True, message=f"xrdp port set to {port}")
@@ -66,6 +68,7 @@ async def configure_xrdp_session(on_line: LineCallback | None = None) -> TaskRes
         " && grep -q 'xfce4-session' /etc/xrdp/startwm.sh 2>/dev/null"
         " && echo yes || echo no",
         on_line,
+        timeout=30,
     )
     if check.output.strip() == "yes":
         return TaskResult(ok=True, message="XFCE4 session already configured", skipped=True)
@@ -106,9 +109,9 @@ async def configure_xrdp_session(on_line: LineCallback | None = None) -> TaskRes
         "exec xfce4-session\n"
         "STARTWM"
     )
-    result = await run_local(script, on_line)
+    result = await run_local(script, on_line, timeout=60)
     if result.success:
-        await run_local("sudo chmod +x /etc/xrdp/startwm.sh", on_line)
+        await run_local("sudo chmod +x /etc/xrdp/startwm.sh", on_line, timeout=30)
         return TaskResult(ok=True, message="XFCE4 session configured for xrdp")
     return TaskResult(ok=False, message="Failed to configure xrdp session")
 
@@ -125,7 +128,7 @@ async def configure_colord_polkit(on_line: LineCallback | None = None) -> TaskRe
     /etc/polkit-1/rules.d/ (the older .pkla format is not supported).
     """
     rules_file = "/etc/polkit-1/rules.d/45-allow-colord.rules"
-    check = await run_local(f"test -f {rules_file} && echo yes || echo no", on_line)
+    check = await run_local(f"test -f {rules_file} && echo yes || echo no", on_line, timeout=30)
     if check.output.strip() == "yes":
         return TaskResult(ok=True, message="colord polkit rule already present", skipped=True)
 
@@ -138,7 +141,7 @@ async def configure_colord_polkit(on_line: LineCallback | None = None) -> TaskRe
         "});\n"
         "RULES"
     )
-    result = await run_local(script, on_line)
+    result = await run_local(script, on_line, timeout=60)
     if result.success:
         return TaskResult(ok=True, message="colord polkit rule created")
     return TaskResult(ok=False, message="Failed to create colord polkit rule")
@@ -147,11 +150,11 @@ async def configure_colord_polkit(on_line: LineCallback | None = None) -> TaskRe
 async def fix_xrdp_ssl_permissions(on_line: LineCallback | None = None) -> TaskResult:
     """Add xrdp user to ssl-cert group so it can read the TLS key."""
     # Check if already in the group
-    check = await run_local("id -nG xrdp 2>/dev/null", on_line)
+    check = await run_local("id -nG xrdp 2>/dev/null", on_line, timeout=30)
     if "ssl-cert" in check.output.split():
         return TaskResult(ok=True, message="xrdp already in ssl-cert group", skipped=True)
 
-    result = await run_local("sudo adduser xrdp ssl-cert", on_line)
+    result = await run_local("sudo adduser xrdp ssl-cert", on_line, timeout=60)
     if result.success:
         return TaskResult(ok=True, message="Added xrdp to ssl-cert group")
     return TaskResult(ok=False, message="Failed to add xrdp to ssl-cert group")
@@ -179,6 +182,7 @@ async def create_systemd_overrides(on_line: LineCallback | None = None) -> TaskR
         " && grep -q 'Restart=on-failure' /etc/systemd/system/xrdp-sesman.service 2>/dev/null"
         " && echo yes || echo no",
         on_line,
+        timeout=30,
     )
     if check.output.strip() == "yes":
         return TaskResult(ok=True, message="systemd unit replacements already configured", skipped=True)
@@ -221,10 +225,10 @@ async def create_systemd_overrides(on_line: LineCallback | None = None) -> TaskR
         "WantedBy=multi-user.target\n"
         "EOF"
     )
-    r1 = await run_local(xrdp_unit, on_line)
-    r2 = await run_local(sesman_unit, on_line)
+    r1 = await run_local(xrdp_unit, on_line, timeout=60)
+    r2 = await run_local(sesman_unit, on_line, timeout=60)
     if r1.success and r2.success:
-        await run_local("sudo systemctl daemon-reload", on_line)
+        await run_local("sudo systemctl daemon-reload", on_line, timeout=60)
         return TaskResult(ok=True, message="systemd unit replacements created for xrdp")
     return TaskResult(ok=False, message="Failed to create systemd unit replacements")
 
@@ -241,6 +245,7 @@ async def configure_logind_delay(on_line: LineCallback | None = None) -> TaskRes
         "grep -q '^UserStopDelaySec=infinity' /etc/systemd/logind.conf 2>/dev/null"
         " && echo yes || echo no",
         on_line,
+        timeout=30,
     )
     if check.output.strip() == "yes":
         return TaskResult(ok=True, message="UserStopDelaySec already set", skipped=True)
@@ -248,9 +253,10 @@ async def configure_logind_delay(on_line: LineCallback | None = None) -> TaskRes
     result = await run_local(
         "sudo sed -i 's/^#\\?UserStopDelaySec=.*/UserStopDelaySec=infinity/' /etc/systemd/logind.conf",
         on_line,
+        timeout=60,
     )
     if result.success:
-        await run_local("sudo systemctl restart systemd-logind", on_line)
+        await run_local("sudo systemctl restart systemd-logind", on_line, timeout=60)
         return TaskResult(ok=True, message="UserStopDelaySec set to infinity")
     return TaskResult(ok=False, message="Failed to configure logind delay")
 
@@ -263,12 +269,12 @@ async def enable_user_linger(on_line: LineCallback | None = None) -> TaskResult:
     (killing the XFCE desktop) if the xrdp session is not registered
     as a logind session.
     """
-    user = (await run_local("whoami", on_line)).output.strip()
-    check = await run_local(f"loginctl show-user {user} 2>/dev/null | grep Linger=yes", on_line)
+    user = (await run_local("whoami", on_line, timeout=30)).output.strip()
+    check = await run_local(f"loginctl show-user {user} 2>/dev/null | grep Linger=yes", on_line, timeout=30)
     if check.success and "Linger=yes" in check.output:
         return TaskResult(ok=True, message=f"Linger already enabled for {user}", skipped=True)
 
-    result = await run_local(f"loginctl enable-linger {user}", on_line)
+    result = await run_local(f"loginctl enable-linger {user}", on_line, timeout=30)
     if result.success:
         return TaskResult(ok=True, message=f"Linger enabled for {user}")
     return TaskResult(ok=False, message=f"Failed to enable linger for {user}")
@@ -282,17 +288,17 @@ async def mask_gdm(on_line: LineCallback | None = None) -> TaskResult:
     that immediately fail, eventually triggering systemd-logind to issue
     'The system will power off now!' which kills everything.
     """
-    check = await run_local("systemctl is-enabled gdm 2>/dev/null", on_line)
+    check = await run_local("systemctl is-enabled gdm 2>/dev/null", on_line, timeout=30)
     status = check.output.strip()
     if status == "masked":
         return TaskResult(ok=True, message="GDM already masked", skipped=True)
     if status in ("not-found", "") or "No such file" in check.output:
         return TaskResult(ok=True, message="GDM not installed", skipped=True)
 
-    result = await run_local("sudo systemctl mask gdm", on_line)
+    result = await run_local("sudo systemctl mask gdm", on_line, timeout=60)
     if result.success:
         # Also stop it if it's currently running
-        await run_local("sudo systemctl stop gdm 2>/dev/null", on_line)
+        await run_local("sudo systemctl stop gdm 2>/dev/null", on_line, timeout=60)
         return TaskResult(ok=True, message="GDM masked")
     return TaskResult(ok=False, message="Failed to mask GDM")
 
@@ -312,7 +318,7 @@ async def enable_xrdp_service(on_line: LineCallback | None = None) -> TaskResult
     # Prevent GDM from interfering with xrdp sessions
     await mask_gdm(on_line)
 
-    result = await run_local("sudo systemctl enable --now xrdp", on_line)
+    result = await run_local("sudo systemctl enable --now xrdp", on_line, timeout=120)
     if result.success:
         return TaskResult(ok=True, message="xrdp service enabled and started")
     return TaskResult(ok=False, message="Failed to enable xrdp service")
@@ -320,5 +326,5 @@ async def enable_xrdp_service(on_line: LineCallback | None = None) -> TaskResult
 
 async def check_xrdp_running(on_line: LineCallback | None = None) -> bool:
     """Check if xrdp service is active."""
-    result = await run_local("systemctl is-active xrdp 2>/dev/null", on_line)
+    result = await run_local("systemctl is-active xrdp 2>/dev/null", on_line, timeout=30)
     return result.output.strip() == "active"

@@ -27,6 +27,7 @@ async def is_apt_installed(package: str, on_line: LineCallback | None = None) ->
     result = await run_local(
         f"dpkg -l {package} 2>/dev/null | grep -q '^ii' && echo yes || echo no",
         on_line,
+        timeout=30,
     )
     return result.output.strip() == "yes"
 

@@ -29,9 +29,17 @@ class TestFullVerify:
 
         config = SetupConfig()
         config.aptPackages = ["nautilus"]
-        config.snaps = []
 
-        with patch("linwin.windows.tasks.full_verify.features.check_feature", new_callable=AsyncMock, return_value=True), \
+        async def fake_check_features(names, on_line=None):
+            return {n: True for n in names}
+
+        async def fake_apt_packages(runner, packages):
+            return {p: True for p in packages}
+
+        async def fake_snap_packages(runner, names):
+            return {n: True for n in names}
+
+        with patch("linwin.windows.tasks.full_verify.features.check_features", side_effect=fake_check_features), \
              patch("linwin.windows.tasks.full_verify.run_powershell", new_callable=AsyncMock, return_value=_ok("WSL version 2.0")), \
              patch("linwin.windows.tasks.full_verify.wsl_install.is_distro_registered", new_callable=AsyncMock, return_value=True), \
              patch("linwin.windows.tasks.full_verify.validators.check_drive_exists", new_callable=AsyncMock,
@@ -47,8 +55,8 @@ class TestFullVerify:
                        else "yes")), \
              patch("linwin.windows.tasks.full_verify.check_systemd", new_callable=AsyncMock, return_value=(True, "systemd")), \
              patch("linwin.windows.tasks.full_verify.check_snapd", new_callable=AsyncMock, return_value=True), \
-             patch("linwin.windows.tasks.full_verify.check_apt_package", new_callable=AsyncMock, return_value=True), \
-             patch("linwin.windows.tasks.full_verify.check_snap_package", new_callable=AsyncMock, return_value=True), \
+             patch("linwin.windows.tasks.full_verify.check_apt_packages", side_effect=fake_apt_packages), \
+             patch("linwin.windows.tasks.full_verify.check_snap_packages", side_effect=fake_snap_packages), \
              patch("linwin.windows.tasks.full_verify.check_wslg_dir", new_callable=AsyncMock, return_value=True), \
              patch("linwin.windows.tasks.full_verify.check_drive_mounted", new_callable=AsyncMock, return_value=True):
             result = await run_full_verification(config)
@@ -62,9 +70,11 @@ class TestFullVerify:
 
         config = SetupConfig()
         config.aptPackages = []
-        config.snaps = []
 
-        with patch("linwin.windows.tasks.full_verify.features.check_feature", new_callable=AsyncMock, return_value=True), \
+        async def fake_check_features(names, on_line=None):
+            return {n: True for n in names}
+
+        with patch("linwin.windows.tasks.full_verify.features.check_features", side_effect=fake_check_features), \
              patch("linwin.windows.tasks.full_verify.run_powershell", new_callable=AsyncMock, return_value=_ok("WSL version 2.0")), \
              patch("linwin.windows.tasks.full_verify.wsl_install.is_distro_registered", new_callable=AsyncMock, return_value=False), \
              patch("linwin.windows.tasks.full_verify.validators.check_drive_exists", new_callable=AsyncMock,
@@ -80,13 +90,15 @@ class TestFullVerify:
 
         config = SetupConfig()
         config.aptPackages = []
-        config.snaps = []
         progress_items = []
 
         async def on_progress(item):
             progress_items.append(item)
 
-        with patch("linwin.windows.tasks.full_verify.features.check_feature", new_callable=AsyncMock, return_value=True), \
+        async def fake_check_features(names, on_line=None):
+            return {n: True for n in names}
+
+        with patch("linwin.windows.tasks.full_verify.features.check_features", side_effect=fake_check_features), \
              patch("linwin.windows.tasks.full_verify.run_powershell", new_callable=AsyncMock, return_value=_ok("WSL version 2.0")), \
              patch("linwin.windows.tasks.full_verify.wsl_install.is_distro_registered", new_callable=AsyncMock, return_value=False), \
              patch("linwin.windows.tasks.full_verify.validators.check_drive_exists", new_callable=AsyncMock,
@@ -216,35 +228,44 @@ class TestWindowsMainModule:
 
 
 class TestLinuxMainBranches:
-    def test_headless_install_packages_apt_failure(self):
+    def _patches(self, apt_ok: bool, snapd_ok: bool):
+        from linwin.shared.task_result import TaskResult as TR
+        return [
+            patch("linwin.linux.tasks.apt.apt_update", new_callable=AsyncMock,
+                  return_value=TR(ok=True, message="ok")),
+            patch("linwin.linux.tasks.apt.apt_upgrade", new_callable=AsyncMock,
+                  return_value=TR(ok=True, message="ok")),
+            patch("linwin.linux.tasks.apt.install_apt_package", new_callable=AsyncMock,
+                  return_value=TR(ok=apt_ok, message="ok" if apt_ok else "fail")),
+            patch("linwin.linux.tasks.snaps.check_systemd_running", new_callable=AsyncMock,
+                  return_value=True),
+            patch("linwin.linux.tasks.snaps.ensure_snapd", new_callable=AsyncMock,
+                  return_value=TR(ok=snapd_ok, message="ready" if snapd_ok else "fail")),
+            patch("linwin.linux.tasks.wslg.verify_wslg", new_callable=AsyncMock,
+                  return_value=MagicMock(display_set=True, display_value=":0",
+                                         wslg_dir_exists=True, xeyes_works=None)),
+        ]
+
+    def _run(self, config, apt_ok: bool, snapd_ok: bool) -> int:
+        from contextlib import ExitStack
         from linwin.linux.__main__ import headless_install_packages
 
-        config = {"aptPackages": ["nautilus"], "snaps": []}
+        with ExitStack() as stack:
+            for p in self._patches(apt_ok, snapd_ok):
+                stack.enter_context(p)
+            return headless_install_packages(config)
 
-        with patch("linwin.linux.__main__._run_task", return_value=False), \
-             patch("linwin.linux.tasks.snaps.check_systemd_running", return_value=True), \
-             patch("linwin.linux.tasks.snaps.ensure_snapd") as mock_snapd, \
-             patch("linwin.linux.tasks.wslg.verify_wslg") as mock_wslg:
-            from linwin.shared.task_result import TaskResult as TR
-            mock_snapd.return_value = TR(ok=True, message="ready")
-            mock_wslg.return_value = MagicMock(display_set=True, display_value=":0", wslg_dir_exists=True)
-            result = headless_install_packages(config)
-            assert result == 1
+    def test_headless_install_packages_apt_failure(self):
+        config = SetupConfig()
+        config.aptPackages = ["nautilus"]
+        config.optionalApps = []
+        assert self._run(config, apt_ok=False, snapd_ok=True) == 1
 
     def test_headless_install_packages_snapd_fails(self):
-        from linwin.linux.__main__ import headless_install_packages
-
-        config = {"aptPackages": [], "snaps": []}
-
-        with patch("linwin.linux.__main__._run_task", return_value=True), \
-             patch("linwin.linux.tasks.snaps.check_systemd_running", return_value=True), \
-             patch("linwin.linux.tasks.snaps.ensure_snapd") as mock_snapd, \
-             patch("linwin.linux.tasks.wslg.verify_wslg") as mock_wslg:
-            from linwin.shared.task_result import TaskResult as TR
-            mock_snapd.return_value = TR(ok=False, message="fail")
-            mock_wslg.return_value = MagicMock(display_set=False, display_value="", wslg_dir_exists=False)
-            result = headless_install_packages(config)
-            assert result == 1
+        config = SetupConfig()
+        config.aptPackages = []
+        config.optionalApps = []
+        assert self._run(config, apt_ok=True, snapd_ok=False) == 1
 
 
 # ── Windows Launcher actions coverage ────────────────────────────────

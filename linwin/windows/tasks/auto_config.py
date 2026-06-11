@@ -53,7 +53,9 @@ def build_auto_config(profile: SystemProfile, base_config: SetupConfig) -> Setup
     """Build an optimized SetupConfig from detected system profile.
 
     Overrides hardware-dependent values while preserving user choices
-    like distroName, aptPackages, enableSystemd, and xrdpPort.
+    like distroName, optionalApps, aptPackages, enableSystemd, and
+    xrdpPort — this config gets saved over the stored one when the
+    user accepts the proposal, so dropping a field here wipes it.
     """
     # Pick best drive (prefer non-C)
     if profile.best_drive:
@@ -78,7 +80,7 @@ def build_auto_config(profile: SystemProfile, base_config: SetupConfig) -> Setup
             guiApplications=True,
             defaultVhdSize="512GB",
         ),
-        snaps=[],
+        optionalApps=list(base_config.optionalApps),
         aptPackages=base_config.aptPackages,
         enableSystemd=base_config.enableSystemd,
         xrdpPort=base_config.xrdpPort,

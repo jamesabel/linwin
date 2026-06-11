@@ -8,9 +8,12 @@ invoker in ``linwin.windows.tasks.linux_invoke``).
 
 Format::
 
-    TASK:<task_id>:<status>   — task lifecycle event (running/done/failed)
+    TASK:<task_id>:<status>   — task lifecycle event (running/done/skipped/failed)
     LOG:<message>             — informational log line
     ERROR:<message>           — error log line
+
+The status never contains ``:`` but a task id may (e.g. apt package
+``libc6:i386``), so TASK lines are split from the right.
 """
 
 from __future__ import annotations
@@ -38,9 +41,15 @@ def emit_log(msg: str) -> None:
 
 
 def emit_error(msg: str) -> None:
-    """Write an ERROR line to stdout and the file logger."""
+    """Write an ERROR line to stdout and the file logger.
+
+    Multi-line messages (e.g. tracebacks) are emitted as one ERROR
+    line each — the protocol is line-based, so an unprefixed
+    continuation line would lose its error severity at the consumer.
+    """
     _log.error("ERROR: %s", msg)
-    print(f"ERROR:{msg}", flush=True)
+    for part in msg.splitlines() or [""]:
+        print(f"ERROR:{part}", flush=True)
 
 
 # ── Decoding (consumer side) ────────────────────────────────────────
@@ -60,9 +69,11 @@ async def parse_headless_line(
     and passes unrecognised lines through to ``on_line``.
     """
     if line.startswith("TASK:"):
-        parts = line.split(":", 2)
-        if len(parts) == 3 and on_task_update:
-            await on_task_update(parts[1], parts[2])
+        # Split the status from the right: task ids may contain ':'
+        # (e.g. apt arch qualifiers like libc6:i386), statuses never do.
+        task_id, sep, status = line[5:].rpartition(":")
+        if sep and on_task_update:
+            await on_task_update(task_id, status)
     elif line.startswith("LOG:"):
         if on_line:
             await on_line(line[4:], "stdout")

@@ -8,13 +8,13 @@ from ...shared.task_result import TaskResult
 
 async def check_systemd_enabled(on_line: LineCallback | None = None) -> bool:
     """Check if systemd=true is already in wsl.conf."""
-    result = await run_local("grep -q 'systemd=true' /etc/wsl.conf 2>/dev/null && echo yes || echo no", on_line)
+    result = await run_local("grep -q 'systemd=true' /etc/wsl.conf 2>/dev/null && echo yes || echo no", on_line, timeout=30)
     return result.output.strip() == "yes"
 
 
 async def check_systemd_running(on_line: LineCallback | None = None) -> bool:
     """Check if systemd is PID 1."""
-    result = await run_local("ps -p 1 -o comm= 2>/dev/null", on_line)
+    result = await run_local("ps -p 1 -o comm= 2>/dev/null", on_line, timeout=30)
     return result.output.strip() == "systemd"
 
 
@@ -27,6 +27,7 @@ async def enable_systemd(on_line: LineCallback | None = None) -> TaskResult:
     result = await run_local(
         "grep -q '\\[boot\\]' /etc/wsl.conf 2>/dev/null && echo yes || echo no",
         on_line,
+        timeout=30,
     )
     has_boot = result.output.strip() == "yes"
 
@@ -39,7 +40,7 @@ async def enable_systemd(on_line: LineCallback | None = None) -> TaskResult:
             "echo 'systemd=true' | sudo tee -a /etc/wsl.conf > /dev/null"
         )
 
-    result = await run_local(cmd, on_line)
+    result = await run_local(cmd, on_line, timeout=60)
     if result.success:
         return TaskResult(ok=True, message="systemd enabled in wsl.conf", needs_restart=True)
     return TaskResult(ok=False, message="Failed to modify wsl.conf")

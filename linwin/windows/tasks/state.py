@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
+from ...shared.setup_logging import get_app_data_dir
+from .setup_tasks import RESUME_AFTER_REBOOT
+
 
 def _state_dir() -> Path:
-    local_app_data = os.environ.get("LOCALAPPDATA", "")
-    if not local_app_data:
-        local_app_data = os.path.join(os.environ.get("USERPROFILE", "."), "AppData", "Local")
-    return Path(local_app_data) / "linwin"
+    return get_app_data_dir()
 
 
 def _state_file() -> Path:
@@ -42,7 +41,7 @@ def load_state() -> SetupState | None:
             # Migrate old phase-based state format
             if "phase1_complete" in data and data.get("needs_reboot"):
                 return SetupState(
-                    resume_from_task="update_wsl",
+                    resume_from_task=RESUME_AFTER_REBOOT,
                     config_path=data.get("config_path", ""),
                     timestamp=data.get("timestamp", ""),
                 )

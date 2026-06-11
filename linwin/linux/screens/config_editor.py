@@ -78,9 +78,7 @@ class ConfigEditorScreen(ClickDispatchScreen):
     def _save_config(self) -> None:
         c = self._config
 
-        from ...shared.config import SnapPackage
         c.optionalApps = collect_app_selections(self.query_one)
-        c.snaps = [SnapPackage(a.id, a.classic) for a in c.optionalApps if a.install_method == "snap"]
         c.aptPackages = parse_apt_input(self.query_one("#input-apt-packages", Input).value)
 
         # Systemd

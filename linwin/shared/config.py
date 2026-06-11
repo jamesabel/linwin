@@ -86,9 +86,9 @@ APP_REGISTRY: list[AppEntry] = [
 # Index for fast lookup by ID.
 _APP_REGISTRY_MAP: dict[str, AppEntry] = {a.id: a for a in APP_REGISTRY}
 
-# Backward-compat alias used by legacy code / tests.
-AVAILABLE_SNAPS: list[tuple[str, str]] = [
-    (a.id, a.display_name) for a in APP_REGISTRY if a.install_method == "snap"
+# Default apt packages installed on every setup.
+DEFAULT_APT_PACKAGES: list[str] = [
+    "nautilus", "x11-apps", "xfce4", "xfce4-terminal", "xrdp", "dbus-x11",
 ]
 
 
@@ -104,13 +104,16 @@ class SetupConfig:
     wslInstallPath: str = "V:\\WSL\\Ubuntu"
     wslDriveLetter: str = "V"
     wslconfig: WslConfig = field(default_factory=WslConfig)
-    snaps: list[SnapPackage] = field(default_factory=list)
     optionalApps: list[AppEntry] = field(default_factory=list)
-    aptPackages: list[str] = field(default_factory=lambda: [
-        "nautilus", "x11-apps", "xfce4", "xfce4-terminal", "xrdp", "dbus-x11",
-    ])
+    aptPackages: list[str] = field(default_factory=lambda: list(DEFAULT_APT_PACKAGES))
     enableSystemd: bool = True
     xrdpPort: int = 3390
+
+    @property
+    def snaps(self) -> list[SnapPackage]:
+        """Snap packages derived from optionalApps — single source of truth."""
+        return [SnapPackage(a.id, a.classic) for a in self.optionalApps
+                if a.install_method == "snap"]
 
     @staticmethod
     def from_dict(data: dict) -> SetupConfig:
@@ -134,29 +137,26 @@ class SetupConfig:
                     classic=classic,
                 ))
 
-        snaps = [SnapPackage(a.id, a.classic) for a in optional_apps
-                 if a.install_method == "snap"]
-
         return SetupConfig(
             distroName=data.get("distroName", "Ubuntu-22.04"),
             distroImportName=data.get("distroImportName", "Ubuntu"),
             wslInstallPath=data.get("wslInstallPath", "V:\\WSL\\Ubuntu"),
             wslDriveLetter=data.get("wslDriveLetter", "V"),
             wslconfig=wslconfig,
-            snaps=snaps,
             optionalApps=optional_apps,
-            aptPackages=data.get("aptPackages", [
-                "nautilus", "x11-apps", "xfce4", "xfce4-terminal", "xrdp", "dbus-x11",
-            ]),
+            aptPackages=data.get("aptPackages", list(DEFAULT_APT_PACKAGES)),
             enableSystemd=data.get("enableSystemd", True),
             xrdpPort=data.get("xrdpPort", 3390),
         )
 
     def to_dict(self) -> dict:
-        """Serialize to a plain dict."""
+        """Serialize to a plain dict.
+
+        The legacy ``snaps`` key is still emitted for wire compatibility
+        with consumers that predate optionalApps.
+        """
         d = asdict(self)
-        d["snaps"] = [{"name": a.id, "classic": a.classic}
-                      for a in self.optionalApps if a.install_method == "snap"]
+        d["snaps"] = [asdict(s) for s in self.snaps]
         return d
 
 
@@ -193,11 +193,7 @@ def _pref_dict_to_config(data: dict) -> SetupConfig:
     optional_apps = [AppEntry(**a) for a in json.loads(optional_raw)] if isinstance(optional_raw, str) else []
 
     apt_raw = data.get("aptPackages", "[]")
-    apt_packages = json.loads(apt_raw) if isinstance(apt_raw, str) else [
-        "nautilus", "x11-apps", "xfce4", "xfce4-terminal", "xrdp", "dbus-x11",
-    ]
-
-    snaps = [SnapPackage(a.id, a.classic) for a in optional_apps if a.install_method == "snap"]
+    apt_packages = json.loads(apt_raw) if isinstance(apt_raw, str) else list(DEFAULT_APT_PACKAGES)
 
     enable_systemd = data.get("enableSystemd", 1)
     if isinstance(enable_systemd, int):
@@ -209,7 +205,6 @@ def _pref_dict_to_config(data: dict) -> SetupConfig:
         wslInstallPath=data.get("wslInstallPath", "V:\\WSL\\Ubuntu"),
         wslDriveLetter=data.get("wslDriveLetter", "V"),
         wslconfig=wslconfig,
-        snaps=snaps,
         optionalApps=optional_apps,
         aptPackages=apt_packages,
         enableSystemd=enable_systemd,
