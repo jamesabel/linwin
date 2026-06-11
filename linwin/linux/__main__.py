@@ -36,6 +36,16 @@ def find_config() -> dict:
         return SetupConfig().to_dict()
 
 
+async def _emit_output_line(line: str, stream: str) -> None:
+    """Relay live subprocess output (apt, snap, ...) as LOG lines.
+
+    Long steps like apt upgrade run for minutes — without this the
+    Windows TUI shows nothing between 'running' and 'done' and looks
+    stuck.
+    """
+    emit_log(line)
+
+
 def headless_enable_systemd(config: SetupConfig) -> int:
     """Enable systemd in wsl.conf (honors config.enableSystemd)."""
     from .tasks.steps import HeadlessReporter, build_systemd_steps, run_steps
@@ -44,7 +54,8 @@ def headless_enable_systemd(config: SetupConfig) -> int:
         emit_task("enable_systemd", "skipped")
         emit_log("enableSystemd is disabled in the configuration")
         return 0
-    ok = asyncio.run(run_steps(build_systemd_steps(config), HeadlessReporter()))
+    ok = asyncio.run(run_steps(build_systemd_steps(config), HeadlessReporter(),
+                               on_line=_emit_output_line))
     return 0 if ok else 1
 
 
@@ -54,7 +65,7 @@ def headless_install_packages(config: SetupConfig) -> int:
 
     # enable-systemd runs as its own separately-invoked headless step.
     steps = build_package_steps(config, include_systemd=False)
-    ok = asyncio.run(run_steps(steps, HeadlessReporter()))
+    ok = asyncio.run(run_steps(steps, HeadlessReporter(), on_line=_emit_output_line))
     return 0 if ok else 1
 
 
@@ -62,7 +73,8 @@ def headless_configure_xrdp(config: SetupConfig) -> int:
     """Install xrdp + xfce4, configure port/session, enable service."""
     from .tasks.steps import HeadlessReporter, build_xrdp_steps, run_steps
 
-    ok = asyncio.run(run_steps(build_xrdp_steps(config), HeadlessReporter()))
+    ok = asyncio.run(run_steps(build_xrdp_steps(config), HeadlessReporter(),
+                               on_line=_emit_output_line))
     return 0 if ok else 1
 
 

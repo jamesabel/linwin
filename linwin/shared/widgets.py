@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from rich.markup import escape as rich_escape
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -155,10 +157,18 @@ class TaskRow(Widget):
         "skipped": "Skipped",
     }
 
+    # ASCII spinner shown next to the elapsed time while running, so a
+    # long task (apt upgrade, distro export) visibly progresses instead
+    # of sitting on a static "Running...".
+    _SPINNER = "|/-\\"
+
     def __init__(self, task_id: str, name: str, **kwargs) -> None:
         super().__init__(**kwargs)
         self.task_id = task_id
         self.task_name = name
+        self._spin_timer = None
+        self._spin_index = 0
+        self._run_started = 0.0
 
     def compose(self) -> ComposeResult:
         yield Label(self.task_name, classes="task-name")
@@ -170,11 +180,35 @@ class TaskRow(Widget):
             status_label = self.query_one(".task-status", Label)
             status_label.update(self.STATUS_TEXT.get(value, value))
 
+            if value == "running":
+                self._run_started = time.monotonic()
+                self._spin_index = 0
+                if self._spin_timer is None:
+                    self._spin_timer = self.set_interval(1.0, self._tick_running)
+                else:
+                    self._spin_timer.resume()
+            elif self._spin_timer is not None:
+                self._spin_timer.pause()
+
             for s in self.STATUS_TEXT:
                 status_label.remove_class(f"task-status-{s}")
             status_label.add_class(f"task-status-{value}")
         except Exception:
             pass  # Widget not yet mounted
+
+    def _tick_running(self) -> None:
+        if self.status != "running":
+            return
+        elapsed = int(time.monotonic() - self._run_started)
+        minutes, seconds = divmod(elapsed, 60)
+        self._spin_index = (self._spin_index + 1) % len(self._SPINNER)
+        spin = self._SPINNER[self._spin_index]
+        try:
+            self.query_one(".task-status", Label).update(
+                f"Running {spin} {minutes}:{seconds:02d}"
+            )
+        except Exception:
+            pass
 
     def watch_detail(self, value: str) -> None:
         if value:

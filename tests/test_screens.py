@@ -49,7 +49,31 @@ class TestWidgets:
             tasks.set_status("t1", "done")
             tasks.set_status("t2", "failed")
             tasks.set_status("nonexistent", "done")  # Should not crash
+            tasks.set_status("t2", "skipped", "already installed")
             tasks.set_all_pending()
+
+    async def test_task_row_running_shows_elapsed_time(self):
+        from textual.widgets import Label
+        from linwin.shared.widgets import TaskListWidget, TaskRow
+        from textual.screen import Screen
+
+        class S(Screen):
+            def compose(self):
+                yield TaskListWidget([("t1", "Task One")], id="tasks")
+
+        app = _make_app_with_screen(S)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            tasks = app.screen.query_one("#tasks", TaskListWidget)
+            tasks.set_status("t1", "running")
+            row = tasks.query_one("#task-t1", TaskRow)
+            row._tick_running()  # drive the timer deterministically
+            text = str(row.query_one(".task-status", Label).render())
+            assert "Running" in text and ":" in text  # spinner + elapsed m:ss
+            # Leaving the running state stops the animation
+            tasks.set_status("t1", "done")
+            text = str(row.query_one(".task-status", Label).render())
+            assert text == "Done"
 
     async def test_log_panel(self):
         from linwin.shared.widgets import LogPanel
