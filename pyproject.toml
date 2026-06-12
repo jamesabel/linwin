@@ -45,6 +45,7 @@ dev = [
     "pyship>=0.6.1",
     "build",
     "pytest-cov>=7.1.0",
+    "twine>=5.0",
 ]
 
 [project.scripts]
