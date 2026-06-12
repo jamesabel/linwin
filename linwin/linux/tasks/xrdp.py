@@ -66,6 +66,7 @@ async def configure_xrdp_session(on_line: LineCallback | None = None) -> TaskRes
         "grep -q 'unset DBUS_SESSION_BUS_ADDRESS' /etc/xrdp/startwm.sh 2>/dev/null"
         " && grep -q 'XDG_CURRENT_DESKTOP=XFCE' /etc/xrdp/startwm.sh 2>/dev/null"
         " && grep -q 'XAUTHORITY' /etc/xrdp/startwm.sh 2>/dev/null"
+        " && grep -q 'WAYLAND_DISPLAY' /etc/xrdp/startwm.sh 2>/dev/null"
         " && grep -q 'xfce4-session' /etc/xrdp/startwm.sh 2>/dev/null"
         " && echo yes || echo no",
         on_line,
@@ -82,6 +83,11 @@ async def configure_xrdp_session(on_line: LineCallback | None = None) -> TaskRes
     #   - Export XAUTHORITY explicitly: strictly confined snaps (firefox,
     #     chromium) have a remapped HOME, so without the variable they
     #     present no X cookie and fail with "cannot open display".
+    #   - Point WAYLAND_DISPLAY at a nonexistent name: firefox probes for
+    #     WSLg's wayland socket (symlinked into the snap runtime dir) and
+    #     would force GDK_BACKEND=wayland, then fail to open the X display
+    #     name as a wayland socket. A bogus name defeats the probe and the
+    #     GTK wayland backend falls back to X11 cleanly.
     #   - Set XDG_CURRENT_DESKTOP=XFCE and DESKTOP_SESSION=xfce
     #     BEFORE sourcing profiles so ubuntu-desktop's GNOME scripts
     #     don't override the desktop environment.
@@ -103,6 +109,7 @@ async def configure_xrdp_session(on_line: LineCallback | None = None) -> TaskRes
         "\t. ~/.profile\n"
         "fi\n"
         'export XAUTHORITY="${HOME}/.Xauthority"\n'
+        "export WAYLAND_DISPLAY=xrdp-no-wayland\n"
         "export XDG_SESSION_TYPE=x11\n"
         "export XDG_CURRENT_DESKTOP=XFCE\n"
         "export DESKTOP_SESSION=xfce\n"

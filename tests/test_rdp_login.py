@@ -202,6 +202,23 @@ class TestRdpPrerequisites:
             "authenticate to the xrdp display"
         )
 
+    def test_startwm_disables_wayland(self, distro):
+        """startwm.sh must point WAYLAND_DISPLAY at a nonexistent name.
+
+        Snap firefox probes for WSLg's wayland socket and forces
+        GDK_BACKEND=wayland, then fails to open the X display ':10' as
+        a wayland socket name. A bogus WAYLAND_DISPLAY defeats the
+        probe so GTK falls back to X11.
+        """
+        result = _run(run_wsl(
+            distro,
+            "grep -q 'WAYLAND_DISPLAY=xrdp-no-wayland' /etc/xrdp/startwm.sh && echo yes || echo no",
+        ))
+        assert result.output.strip() == "yes", (
+            "startwm.sh missing the WAYLAND_DISPLAY override — snap browsers "
+            "will pick the Wayland backend and fail with 'cannot open display'"
+        )
+
     def test_x11_socket_dir_writable(self, distro):
         """/tmp/.X11-unix must be writable for xrdp sessions.
 
