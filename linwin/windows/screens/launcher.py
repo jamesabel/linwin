@@ -25,12 +25,13 @@ _STANDARD_APPS = [
 
 # Maintenance items: always present.
 _MAINTENANCE = [
-    ("run_verify",     "Run Verification"),
-    ("run_setup",      "Re-run Setup"),
-    ("configure",      "Configure Settings"),
-    ("view_status",    "View Status"),
-    ("reset_password", "Reset RDP Password"),
-    ("quit",           "Exit"),
+    ("run_verify",      "Run Verification"),
+    ("run_setup",       "Re-run Setup"),
+    ("configure",       "Configure Settings"),
+    ("view_status",     "View Status"),
+    ("reset_password",  "Reset RDP Password"),
+    ("toggle_autostart", "Toggle WSL Autostart at Logon"),
+    ("quit",            "Exit"),
 ]
 
 
@@ -183,6 +184,9 @@ class LauncherScreen(ClickDispatchScreen):
     def action_reset_password(self) -> None:
         self._reset_password()
 
+    def action_toggle_autostart(self) -> None:
+        self._toggle_autostart()
+
     def action_quit(self) -> None:
         self.app.exit()
 
@@ -225,6 +229,21 @@ class LauncherScreen(ClickDispatchScreen):
         health = await run_health_check(self._config)
         from .status import StatusScreen
         self.app.switch_screen(StatusScreen(self._config, health))
+
+    @work
+    async def _toggle_autostart(self) -> None:
+        """Enable/disable booting the distro at Windows logon.
+
+        Keeps lingering services (xrdp, the OpenClaw gateway) available
+        right after a reboot without opening linwin first.
+        """
+        from ..tasks import autostart
+
+        if await autostart.is_autostart_enabled():
+            result = await autostart.disable_wsl_autostart()
+        else:
+            result = await autostart.enable_wsl_autostart(self._config)
+        self.app.notify(result.message, severity="information" if result.ok else "error")
 
     @work
     async def _reset_password(self) -> None:

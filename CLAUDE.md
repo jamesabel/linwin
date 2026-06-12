@@ -55,7 +55,7 @@ Enabling Windows features (DISM) requires a **reboot**. At that checkpoint the f
 
 ### Configuration
 
-`SetupConfig` (in `shared/config.py`) is the single config dataclass. On Windows it's persisted in a per-user **sqlite DB via the `pref` package** (not a JSON file — `config.json` was removed). The Linux side receives config as a dict over the boundary and never touches the DB. `SetupConfig.from_dict`/`to_dict` handle (de)serialization and migrate the legacy `snaps` field into the `optionalApps` / `APP_REGISTRY` model. To add a launchable app, append one `AppEntry` to `APP_REGISTRY`.
+`SetupConfig` (in `shared/config.py`) is the single config dataclass. On Windows it's persisted in a per-user **sqlite DB via the `pref` package** (not a JSON file — `config.json` was removed). The Linux side receives config as a dict over the boundary and never touches the DB. `SetupConfig.from_dict`/`to_dict` handle (de)serialization and migrate the legacy `snaps` field into the `optionalApps` / `APP_REGISTRY` model. To add a launchable app, append one `AppEntry` to `APP_REGISTRY`. Apps with `install_method="installer"` (e.g. openclaw) are installed by an app-specific coroutine registered in `APP_INSTALLERS` (`linux/tasks/steps.py`).
 
 ### Subprocess execution
 

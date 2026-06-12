@@ -12,6 +12,7 @@ from ...shared.config import SetupConfig
 from ...shared.subprocess_runner import run_local
 from ...shared.verify_checks import (
     check_apt_package,
+    check_command,
     check_display_set,
     check_drive_mounted,
     check_snap_package,
@@ -88,6 +89,11 @@ class VerifyScreen(ClickDispatchScreen):
                 dash.add_check(f"snap: {app.id}", await check_snap_package(run_local, app.id))
             elif app.install_method == "apt":
                 dash.add_check(f"apt: {app.id}", await check_apt_package(run_local, app.id))
+            elif app.install_method == "installer":
+                dash.add_check(
+                    f"app: {app.id}",
+                    await check_command(run_local, app.command.split()[0]),
+                )
 
         display_ok, display_val = await check_display_set()
         dash.add_check("DISPLAY set", display_ok, display_val, warn=not display_ok)

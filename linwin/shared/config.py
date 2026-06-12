@@ -43,16 +43,18 @@ class AppEntry:
         id: Unique identifier, typically the package name (e.g. "pycharm-community").
         display_name: Human-readable name shown in the UI.
         command: Shell command to launch the app inside WSL.
-        install_method: How the app is installed — "snap", "apt", or "custom".
-            "custom" means the user installs it themselves; linwin only provides
-            a launch button.
+        install_method: How the app is installed — "snap", "apt",
+            "installer", or "custom". "installer" runs an app-provided
+            install script (dispatched via APP_INSTALLERS in
+            linux/tasks/steps.py). "custom" means the user installs it
+            themselves; linwin only provides a launch button.
         classic: Whether to use ``--classic`` flag (snap only).
     """
 
     id: str
     display_name: str
     command: str
-    install_method: str = "snap"  # "snap" | "apt" | "custom"
+    install_method: str = "snap"  # "snap" | "apt" | "installer" | "custom"
     classic: bool = True
 
 
@@ -78,6 +80,8 @@ APP_REGISTRY: list[AppEntry] = [
     # Apt-installable apps
     AppEntry("thunderbird",             "Thunderbird",              "thunderbird",              "apt"),
     AppEntry("gedit",                   "Text Editor (gedit)",      "gedit",                    "apt"),
+    # Script-installed apps (official installer, see APP_INSTALLERS)
+    AppEntry("openclaw",                "OpenClaw (AI agent)",      "openclaw dashboard",       "installer", classic=False),
     # Custom-installed apps (launch button only, user installs separately)
     AppEntry("matlab",                  "MATLAB",                   "matlab",                   "custom"),
     AppEntry("mathematica",             "Mathematica",              "mathematica",              "custom"),
