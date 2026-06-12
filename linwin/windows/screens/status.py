@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
@@ -220,11 +222,13 @@ class StatusScreen(ClickDispatchScreen):
         info_box = self.query_one("#system-info")
         detecting = self.query_one("#detecting-label")
 
-        build = await validators.check_windows_build()
-        virt = await validators.check_virtualization()
-        ram = await validators.check_ram()
-        cpus = await validators.check_cpu_count()
-        drive = await validators.check_drive_exists(self._config.wslDriveLetter)
+        build, virt, ram, cpus, drive = await asyncio.gather(
+            validators.check_windows_build(),
+            validators.check_virtualization(),
+            validators.check_ram(),
+            validators.check_cpu_count(),
+            validators.check_drive_exists(self._config.wslDriveLetter),
+        )
 
         detecting.remove()
 

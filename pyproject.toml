@@ -42,13 +42,14 @@ Issues = "https://github.com/jamesabel/linwin/issues"
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
-    "pyship>=0.3.3",
-    "build"
+    "pyship>=0.6.1",
+    "build",
+    "pytest-cov>=7.1.0",
 ]
 
 [project.scripts]
 setup-tui = "linwin.windows.__main__:main"
 
 [tool.pyship]
-is_gui = false
+ui = "tui"
 

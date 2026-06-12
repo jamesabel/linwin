@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -28,6 +29,14 @@ class SubprocessResult:
         return "\n".join(self.stdout_lines)
 
 
+def _kill_quietly(proc: asyncio.subprocess.Process) -> None:
+    """Kill a child process, tolerating one that already exited."""
+    try:
+        proc.kill()
+    except (ProcessLookupError, OSError):
+        pass
+
+
 async def run_command(
     args: list[str],
     on_line: LineCallback | None = None,
@@ -40,11 +49,23 @@ async def run_command(
     log.info("RUN: %s", cmd_str)
     t0 = time.monotonic()
 
+    env = None
+    if args and os.path.basename(args[0]).lower() in ("wsl.exe", "wsl"):
+        # Make wsl.exe emit UTF-8 instead of UTF-16LE so non-ASCII
+        # distro names survive decoding (the NUL-strip below only
+        # round-trips pure ASCII).
+        env = {**os.environ, "WSL_UTF8": "1"}
+
     proc = await asyncio.create_subprocess_exec(
         *args,
+        # No child may prompt on the TUI's terminal: without a usable
+        # stdin, sudo/OOBE-style prompts fail fast instead of hanging
+        # invisibly behind the raw-mode Textual screen.
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,
+        env=env,
     )
 
     stdout_lines: list[str] = []
@@ -82,10 +103,23 @@ async def run_command(
                 read_stream(proc.stderr, "stderr", stderr_lines),
             )
     except asyncio.TimeoutError:
-        proc.kill()
+        _kill_quietly(proc)
+        # Reap the killed child so its pipe transports close; otherwise
+        # they warn ("I/O operation on closed pipe") at interpreter
+        # shutdown when the GC finds them unclosed.
+        await proc.wait()
         elapsed = time.monotonic() - t0
         log.warning("TIMEOUT after %.1fs: %s", elapsed, cmd_str)
         return SubprocessResult(exit_code=-1, stdout_lines=stdout_lines, stderr_lines=["Timed out"])
+    except BaseException:
+        # Cancellation (e.g. the app exits while a probe is in flight):
+        # kill and reap the child instead of abandoning its transports.
+        _kill_quietly(proc)
+        try:
+            await proc.wait()
+        except BaseException:
+            pass
+        raise
 
     await proc.wait()
     elapsed = time.monotonic() - t0
@@ -123,6 +157,7 @@ async def run_wsl(
     command: str,
     on_line: LineCallback | None = None,
     cwd: str | None = None,
+    timeout: float | None = None,
 ) -> SubprocessResult:
     """Run a bash command inside a WSL distro.
 
@@ -130,12 +165,14 @@ async def run_wsl(
         cwd: Optional WSL path to set as working directory via --cd flag.
              Use this instead of ``cd '...' &&`` in the command string to
              avoid Windows command-line parsing issues with ``&&``.
+        timeout: Optional timeout in seconds; the awaiting flow must never
+             block forever on a wedged distro command.
     """
     args = ["wsl.exe", "-d", distro]
     if cwd:
         args.extend(["--cd", cwd])
     args.extend(["--", "bash", "-c", command])
-    return await run_command(args, on_line=on_line)
+    return await run_command(args, on_line=on_line, timeout=timeout)
 
 
 async def run_wsl_exec(

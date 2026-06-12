@@ -49,7 +49,72 @@ class TestWidgets:
             tasks.set_status("t1", "done")
             tasks.set_status("t2", "failed")
             tasks.set_status("nonexistent", "done")  # Should not crash
+            tasks.set_status("t2", "skipped", "already installed")
             tasks.set_all_pending()
+
+    async def test_password_prompt_modal(self):
+        from textual.widgets import Input, Static
+        from linwin.shared.base_app import BaseSetupApp
+        from linwin.windows.screens.password_prompt import PasswordPromptScreen
+
+        config = SetupConfig()
+        app = BaseSetupApp(config)
+        results = []
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            app.push_screen(PasswordPromptScreen("ubuntu"), callback=results.append)
+            await pilot.pause()
+            screen = app.screen
+            # Mismatched confirmation is rejected with an error message
+            screen.query_one("#pw-input", Input).value = "secret1"
+            screen.query_one("#pw-confirm", Input).value = "secret2"
+            screen.action_submit()
+            await pilot.pause()
+            assert results == []
+            assert "match" in str(screen.query_one("#pw-error", Static).render())
+            # Matching confirmation dismisses with the password
+            screen.query_one("#pw-confirm", Input).value = "secret1"
+            screen.action_submit()
+            await pilot.pause()
+        assert results == ["secret1"]
+
+    async def test_password_prompt_skip_returns_none(self):
+        from linwin.shared.base_app import BaseSetupApp
+        from linwin.windows.screens.password_prompt import PasswordPromptScreen
+
+        config = SetupConfig()
+        app = BaseSetupApp(config)
+        results = []
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            app.push_screen(PasswordPromptScreen("ubuntu"), callback=results.append)
+            await pilot.pause()
+            app.screen.action_skip()
+            await pilot.pause()
+        assert results == [None]
+
+    async def test_task_row_running_shows_elapsed_time(self):
+        from textual.widgets import Label
+        from linwin.shared.widgets import TaskListWidget, TaskRow
+        from textual.screen import Screen
+
+        class S(Screen):
+            def compose(self):
+                yield TaskListWidget([("t1", "Task One")], id="tasks")
+
+        app = _make_app_with_screen(S)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            tasks = app.screen.query_one("#tasks", TaskListWidget)
+            tasks.set_status("t1", "running")
+            row = tasks.query_one("#task-t1", TaskRow)
+            row._tick_running()  # drive the timer deterministically
+            text = str(row.query_one(".task-status", Label).render())
+            assert "Running" in text and ":" in text  # spinner + elapsed m:ss
+            # Leaving the running state stops the animation
+            tasks.set_status("t1", "done")
+            text = str(row.query_one(".task-status", Label).render())
+            assert text == "Done"
 
     async def test_log_panel(self):
         from linwin.shared.widgets import LogPanel
@@ -201,12 +266,21 @@ class TestVerifyScreen:
             VerifyCheckItem("systemd", True, category="linux"),
         ])
 
-        with patch("linwin.windows.tasks.full_verify.run_full_verification",
-                   new_callable=AsyncMock, return_value=mock_result):
+        with patch("linwin.windows.screens.verify.run_full_verification",
+                   new_callable=AsyncMock, return_value=mock_result) as mock_verify:
             async with app.run_test(size=(80, 24)) as pilot:
                 screen = VerifyScreen(config)
                 app.push_screen(screen)
                 await pilot.pause()
+                # Verification must launch automatically when the screen opens.
+                mock_verify.assert_awaited()
+                await app.workers.wait_for_complete()
+                # Check results are copyable as plain text
+                text = screen.get_copy_text()
+                assert "PASS" in text and "WSL" in text and "systemd" in text
+                with patch.object(app, "copy_to_clipboard") as copy_mock:
+                    screen.action_copy_results()
+                copy_mock.assert_called_once_with(text)
 
 
 # ── Windows Config Editor ────────────────────────────────────────────

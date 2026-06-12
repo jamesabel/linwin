@@ -7,6 +7,7 @@ elevation for just the DISM command, not the entire app.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 from ...shared.subprocess_runner import LineCallback, run_powershell
@@ -47,6 +48,29 @@ async def check_feature(feature_name: str, on_line: LineCallback | None = None) 
     return result.success
 
 
+async def check_features(
+    feature_names: list[str],
+    on_line: LineCallback | None = None,
+) -> dict[str, bool]:
+    """Check several Windows features at once.
+
+    The non-admin path uses a single ``wsl --status`` probe for all
+    features instead of repeating the identical probe per feature; the
+    admin path queries each feature concurrently.
+    """
+    from ..app import check_admin
+
+    if check_admin():
+        results = await asyncio.gather(
+            *(check_feature(name, on_line) for name in feature_names)
+        )
+        return dict(zip(feature_names, results))
+
+    from ...shared.subprocess_runner import run_command
+    result = await run_command(["wsl.exe", "--status"], on_line=on_line)
+    return {name: result.success for name in feature_names}
+
+
 async def enable_feature(feature_name: str, on_line: LineCallback | None = None) -> FeatureResult:
     """Enable a Windows optional feature via DISM.
 
@@ -69,8 +93,9 @@ async def enable_feature(feature_name: str, on_line: LineCallback | None = None)
         error_msg = "\n".join(result.stderr_lines) if result.stderr_lines else "DISM command failed"
         return FeatureResult(already_enabled=False, enabled_now=False, error=error_msg)
     else:
-        # Not admin — elevate just this command.
-        success = run_elevated(dism_cmd)
+        # Not admin — elevate just this command, off the event loop so
+        # the TUI keeps rendering while the UAC prompt + DISM run.
+        success = await asyncio.to_thread(run_elevated, dism_cmd)
         if success:
             return FeatureResult(already_enabled=False, enabled_now=True)
         return FeatureResult(already_enabled=False, enabled_now=False,

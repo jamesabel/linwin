@@ -56,10 +56,20 @@ class BaseSetupApp(App):
         self._config = config
 
     def action_copy_log(self) -> None:
-        """Copy the visible log panel content to the system clipboard."""
+        """Copy the current screen's text content to the system clipboard.
+
+        Screens can provide a ``get_copy_text()`` method (e.g. the verify
+        screens copy their check results); otherwise the visible log
+        panel content is copied.
+        """
         from .widgets import LogPanel
 
         try:
+            get_copy_text = getattr(self.screen, "get_copy_text", None)
+            if get_copy_text is not None:
+                self.copy_to_clipboard(get_copy_text())
+                self.notify("Copied to clipboard")
+                return
             panel = self.screen.query_one(LogPanel)
             self.copy_to_clipboard(panel.get_text())
             self.notify("Log copied to clipboard")

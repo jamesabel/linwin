@@ -40,15 +40,16 @@ class HealthStatus:
 
 async def run_health_check(config: SetupConfig) -> HealthStatus:
     """Run all health checks concurrently. Completes in ~2-3 seconds."""
-    wsl_feat, vm_plat, distro_reg, vhd_ok = await asyncio.gather(
-        features.check_feature("Microsoft-Windows-Subsystem-Linux"),
-        features.check_feature("VirtualMachinePlatform"),
+    feature_states, distro_reg, vhd_ok = await asyncio.gather(
+        features.check_features([
+            "Microsoft-Windows-Subsystem-Linux", "VirtualMachinePlatform",
+        ]),
         wsl_install.is_distro_registered(config),
         wsl_install.is_distro_on_target_drive(config),
     )
     return HealthStatus(
-        wsl_feature=wsl_feat,
-        vm_platform=vm_plat,
+        wsl_feature=feature_states["Microsoft-Windows-Subsystem-Linux"],
+        vm_platform=feature_states["VirtualMachinePlatform"],
         distro_registered=distro_reg,
         vhd_on_target=vhd_ok,
     )

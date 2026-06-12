@@ -134,14 +134,132 @@ class TestRdpPrerequisites:
         colord D-Bus activation that demands polkit auth, which fails
         (no agent in xrdp) and crashes the session.
         Ubuntu 24.04 uses polkit 124+ (JavaScript rules)."""
+        # rules.d is mode 750 root:polkitd — must check as root or the
+        # file is invisible and this reports a false negative.
         result = _run(run_wsl(
             distro,
-            "test -f /etc/polkit-1/rules.d/45-allow-colord.rules"
+            "sudo test -f /etc/polkit-1/rules.d/45-allow-colord.rules"
             " && echo yes || echo no",
         ))
         assert result.output.strip() == "yes", (
             "colord polkit rule missing — RDP sessions will crash on interaction"
         )
+
+    def test_default_browser_launches(self, distro):
+        """The XFCE 'Web Browser' launcher must resolve to a real binary.
+
+        Ubuntu installs firefox as a snap, leaving the x-www-browser
+        alternative pointing at a /usr/bin/firefox that no longer
+        exists — the panel button then fails with 'Failed to execute
+        default Web Browser'. Setup must configure a working default
+        whenever any browser is installed.
+        """
+        # Is any browser installed at all? (login shell so /snap/bin is on PATH)
+        r = _run(run_wsl(
+            distro,
+            "bash -lc 'command -v firefox chromium chromium-browser google-chrome' 2>/dev/null | head -1",
+        ))
+        if not (r.success and r.output.strip()):
+            pytest.skip("No browser installed in the distro")
+
+        # exo consults the XFCE helper first; it must name a resolvable browser
+        r = _run(run_wsl(
+            distro,
+            "grep -m1 '^WebBrowser=' ~/.config/xfce4/helpers.rc 2>/dev/null | cut -d= -f2",
+        ))
+        helper = r.output.strip()
+        assert helper, (
+            "No default WebBrowser configured in ~/.config/xfce4/helpers.rc — "
+            "the XFCE browser button will fail with 'Failed to execute default Web Browser'"
+        )
+        # The helper id maps to a .desktop in the XFCE helper dirs (XFCE
+        # generates user-level ids like firefox_firefox once a browser
+        # has been opened); resolve it and check its command exists.
+        r = _run(run_wsl(
+            distro,
+            f"ls ~/.local/share/xfce4/helpers/{helper}.desktop "
+            f"/usr/share/xfce4/helpers/{helper}.desktop 2>/dev/null | head -1",
+        ))
+        helper_file = r.output.strip()
+        assert helper_file, (
+            f"WebBrowser helper '{helper}' has no .desktop definition in the "
+            "XFCE helper directories"
+        )
+        r = _run(run_wsl(
+            distro,
+            f"grep -m1 -E '^(TryExec|X-XFCE-Commands)=' '{helper_file}' "
+            "| cut -d= -f2 | cut -d';' -f1",
+        ))
+        command = r.output.strip().split()[0] if r.output.strip() else ""
+        assert command, f"Helper file {helper_file} declares no command"
+        if command.startswith("/"):
+            r = _run(run_wsl(distro, f"test -x {command} && echo yes || echo no"))
+        else:
+            r = _run(run_wsl(distro, f"bash -lc 'command -v {command} > /dev/null' && echo yes || echo no"))
+        assert r.output.strip() == "yes", (
+            f"WebBrowser helper '{helper}' resolves to '{command}', which is not executable"
+        )
+
+        # The sensible-browser fallback must not be a dangling alternative.
+        # test -x follows symlinks, so a dangling target fails it.
+        # ($-free on purpose: the wsl.exe relay mangles $ even in quotes.)
+        r = _run(run_wsl(
+            distro,
+            "test -x /etc/alternatives/x-www-browser && echo yes || echo no",
+        ))
+        assert r.output.strip() == "yes", (
+            "x-www-browser alternative is dangling — sensible-browser fallback is broken"
+        )
+
+    def test_startwm_exports_xauthority(self, distro):
+        """startwm.sh must export XAUTHORITY: strictly confined snaps
+        (firefox, chromium) have a remapped HOME and present no X cookie
+        without it — failing with 'cannot open display' even when the
+        socket is reachable."""
+        result = _run(run_wsl(
+            distro,
+            "grep -q 'export XAUTHORITY' /etc/xrdp/startwm.sh && echo yes || echo no",
+        ))
+        assert result.output.strip() == "yes", (
+            "startwm.sh missing 'export XAUTHORITY' — snap apps cannot "
+            "authenticate to the xrdp display"
+        )
+
+    def test_startwm_disables_wayland(self, distro):
+        """startwm.sh must point WAYLAND_DISPLAY at a nonexistent name.
+
+        Snap firefox probes for WSLg's wayland socket and forces
+        GDK_BACKEND=wayland, then fails to open the X display ':10' as
+        a wayland socket name. A bogus WAYLAND_DISPLAY defeats the
+        probe so GTK falls back to X11.
+        """
+        result = _run(run_wsl(
+            distro,
+            "grep -q 'WAYLAND_DISPLAY=xrdp-no-wayland' /etc/xrdp/startwm.sh && echo yes || echo no",
+        ))
+        assert result.output.strip() == "yes", (
+            "startwm.sh missing the WAYLAND_DISPLAY override — snap browsers "
+            "will pick the Wayland backend and fail with 'cannot open display'"
+        )
+
+    def test_x11_socket_dir_writable(self, distro):
+        """/tmp/.X11-unix must be writable for xrdp sessions.
+
+        WSLg mounts it read-only, which forces xrdp's Xorg onto an
+        abstract socket that snap-confined apps (firefox, chromium)
+        cannot reach — they fail with 'cannot open display :10'.
+        """
+        r = _run(run_wsl(distro, "test -w /tmp/.X11-unix && echo yes || echo no"))
+        assert r.output.strip() == "yes", (
+            "/tmp/.X11-unix is read-only — snap apps cannot open the xrdp display"
+        )
+        r = _run(run_wsl(distro, "systemctl is-enabled linwin-x11-dir.service 2>/dev/null"))
+        assert r.output.strip() == "enabled", (
+            "linwin-x11-dir.service not enabled — the writable X11 dir won't survive a WSL restart"
+        )
+        # WSLg's X0 must still be reachable after the remount
+        r = _run(run_wsl(distro, "test -S /tmp/.X11-unix/X0 && echo yes || echo no"))
+        assert r.output.strip() == "yes", "WSLg X0 socket lost by the X11 dir fix"
 
     def test_xrdp_in_ssl_cert_group(self, distro):
         result = _run(run_wsl(distro, "id -nG xrdp 2>/dev/null"))

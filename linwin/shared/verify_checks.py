@@ -55,6 +55,43 @@ async def check_apt_package(runner: Runner, package: str) -> bool:
     return result.output.strip() == "yes"
 
 
+async def check_apt_packages(runner: Runner, packages: list[str]) -> dict[str, bool]:
+    """Check several apt packages with a single dpkg invocation.
+
+    One subprocess replaces one-per-package; the caller maps the result
+    back to per-package checks.
+
+    The command must not contain ``$``: when the runner is ``run_wsl``,
+    the wsl.exe relay re-evaluates the command string and expands ``$``
+    even inside single quotes (a dpkg-query ``-f '${Package}'`` format
+    silently collapses to spaces).
+    """
+    if not packages:
+        return {}
+    names = " ".join(packages)
+    result = await _run_with_retry(
+        runner,
+        # "ii  name  version  arch  desc" -> installed package names
+        f"dpkg -l {names} 2>/dev/null | grep '^ii' | tr -s ' ' | cut -d' ' -f2 | cut -d: -f1",
+    )
+    installed = {line.strip() for line in result.stdout_lines if line.strip()}
+    return {p: p in installed for p in packages}
+
+
+async def check_snap_packages(runner: Runner, names: list[str]) -> dict[str, bool]:
+    """Check several snap packages with a single ``snap list`` invocation.
+
+    ``$``-free for the same wsl.exe relay reason as check_apt_packages.
+    """
+    if not names:
+        return {}
+    result = await _run_with_retry(
+        runner, "snap list 2>/dev/null | tail -n +2 | tr -s ' ' | cut -d' ' -f1"
+    )
+    installed = {line.strip() for line in result.stdout_lines if line.strip()}
+    return {n: n in installed for n in names}
+
+
 async def check_snap_package(runner: Runner, name: str) -> bool:
     """Check if a snap package is installed."""
     result = await _run_with_retry(

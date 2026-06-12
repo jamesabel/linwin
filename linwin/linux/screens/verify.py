@@ -27,10 +27,12 @@ class VerifyScreen(ClickDispatchScreen):
 
     BINDINGS = [
         ("escape", "quit_app", "Exit"),
+        ("c", "copy_results", "Copy Results"),
     ]
 
     CLICK_MAP = {
         "btn-exit": "quit_app",
+        "btn-copy": "copy_results",
     }
 
     CSS = """
@@ -60,6 +62,7 @@ class VerifyScreen(ClickDispatchScreen):
             yield VerifyDashboard(title="Linux Verification", id="linux-verify")
             yield Static("Running verification...", id="verify-status")
             with Horizontal(classes="button-bar"):
+                yield Static("\\[c] Copy Results", id="btn-copy", classes="action-link")
                 yield Static("\\[Esc] Exit", id="btn-exit", classes="action-link")
 
     def on_mount(self) -> None:
@@ -100,6 +103,14 @@ class VerifyScreen(ClickDispatchScreen):
             status.update("[green]All checks passed![/]")
         else:
             status.update("[yellow]Some checks need attention. See above.[/]")
+
+    def get_copy_text(self) -> str:
+        """Check results as plain text (used by copy actions / Ctrl+C)."""
+        return self.query_one("#linux-verify", VerifyDashboard).get_text()
+
+    def action_copy_results(self) -> None:
+        self.app.copy_to_clipboard(self.get_copy_text())
+        self.app.notify("Verification results copied to clipboard")
 
     def action_quit_app(self) -> None:
         self.app.exit()

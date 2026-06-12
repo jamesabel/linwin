@@ -81,6 +81,53 @@ class TestApt:
             assert not result.ok
 
 
+# ── desktop icons ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestDesktopIcons:
+    async def test_no_apps_skips_without_subprocess(self):
+        from linwin.linux.tasks.desktop import create_desktop_icons
+        with patch("linwin.linux.tasks.desktop.run_local", new_callable=AsyncMock) as run:
+            result = await create_desktop_icons([])
+        assert result.ok and result.skipped
+        run.assert_not_called()
+
+    async def test_creates_icon_for_found_launcher(self):
+        from linwin.shared.config import AppEntry
+        from linwin.linux.tasks.desktop import create_desktop_icons
+        commands = []
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            commands.append(cmd)
+            if "xdg-user-dir" in cmd:
+                return _ok("/home/ubuntu/Desktop")
+            return _ok("OK")
+
+        apps = [AppEntry("firefox", "Firefox", "firefox", "snap", classic=False)]
+        with patch("linwin.linux.tasks.desktop.run_local", side_effect=mock_run):
+            result = await create_desktop_icons(apps)
+        assert result.ok
+        assert "Firefox" in result.message and "created" in result.message
+        # The copy command searches snap and system desktop entries
+        assert any("firefox_firefox.desktop" in c and "chmod +x" in c for c in commands)
+
+    async def test_reports_missing_launcher(self):
+        from linwin.shared.config import AppEntry
+        from linwin.linux.tasks.desktop import create_desktop_icons
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            if "xdg-user-dir" in cmd:
+                return _ok("/home/ubuntu/Desktop")
+            return _ok("MISS")
+
+        apps = [AppEntry("matlab", "MATLAB", "matlab", "custom")]
+        with patch("linwin.linux.tasks.desktop.run_local", side_effect=mock_run):
+            result = await create_desktop_icons(apps)
+        assert result.ok  # cosmetic step never fails the flow
+        assert "no launcher found" in result.message and "MATLAB" in result.message
+
+
 # ── snaps ────────────────────────────────────────────────────────────
 
 
@@ -625,9 +672,36 @@ class TestXrdp:
             result = await mask_gdm()
             assert not result.ok
 
+    async def test_fix_x11_socket_dir_already_writable(self):
+        from linwin.linux.tasks.xrdp import fix_x11_socket_dir
+        with patch("linwin.linux.tasks.xrdp.run_local", new_callable=AsyncMock, return_value=_ok("yes")):
+            result = await fix_x11_socket_dir()
+        assert result.ok and result.skipped
+
+    async def test_fix_x11_socket_dir_installs_unit(self):
+        from linwin.linux.tasks.xrdp import fix_x11_socket_dir
+        commands = []
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            commands.append(cmd)
+            if "test -w" in cmd:
+                return _ok("no")
+            return _ok()
+
+        with patch("linwin.linux.tasks.xrdp.run_local", side_effect=mock_run):
+            result = await fix_x11_socket_dir()
+        assert result.ok and not result.skipped
+        joined = "\n".join(commands)
+        # The boot script must keep WSLg's X0 reachable and remove the ro mount
+        assert "mount --bind" in joined and "umount" in joined
+        # restart (not enable --now): a RemainAfterExit oneshot won't re-run
+        # its ExecStart when already active
+        assert "systemctl restart linwin-x11-dir.service" in joined
+
     async def test_enable_xrdp_service_success(self):
         from linwin.linux.tasks.xrdp import enable_xrdp_service
-        with patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock), \
+        with patch("linwin.linux.tasks.xrdp.fix_x11_socket_dir", new_callable=AsyncMock), \
+             patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.create_systemd_overrides", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.configure_colord_polkit", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.configure_logind_delay", new_callable=AsyncMock), \
@@ -639,7 +713,8 @@ class TestXrdp:
 
     async def test_enable_xrdp_service_failure(self):
         from linwin.linux.tasks.xrdp import enable_xrdp_service
-        with patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock), \
+        with patch("linwin.linux.tasks.xrdp.fix_x11_socket_dir", new_callable=AsyncMock), \
+             patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.create_systemd_overrides", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.configure_colord_polkit", new_callable=AsyncMock), \
              patch("linwin.linux.tasks.xrdp.configure_logind_delay", new_callable=AsyncMock), \
@@ -648,6 +723,69 @@ class TestXrdp:
              patch("linwin.linux.tasks.xrdp.run_local", new_callable=AsyncMock, return_value=_fail()):
             result = await enable_xrdp_service()
             assert not result.ok
+
+    async def test_configure_default_browser_snap_firefox(self):
+        from linwin.linux.tasks.xrdp import configure_default_browser
+        commands = []
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            commands.append(cmd)
+            if "test -x /snap/bin/firefox" in cmd:
+                return _ok("yes")
+            if "grep -m1 '^WebBrowser='" in cmd:
+                return _ok("")  # no helper configured yet
+            if "test -x" in cmd:
+                return _ok("no")
+            return _ok()
+
+        with patch("linwin.linux.tasks.xrdp.run_local", side_effect=mock_run):
+            result = await configure_default_browser()
+        assert result.ok and not result.skipped
+        applied = commands[-1]
+        assert "WebBrowser=firefox" in applied
+        assert "x-www-browser /snap/bin/firefox" in applied
+
+    async def test_configure_default_browser_already_configured(self):
+        from linwin.linux.tasks.xrdp import configure_default_browser
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            if "test -x /snap/bin/firefox" in cmd:
+                return _ok("yes")
+            if "grep -m1 '^WebBrowser='" in cmd:
+                # XFCE-generated helper id from the snap desktop file —
+                # must be respected, not clobbered
+                return _ok("firefox_firefox")
+            if "test -x /etc/alternatives" in cmd:
+                return _ok("yes")
+            return _ok("no")
+
+        with patch("linwin.linux.tasks.xrdp.run_local", side_effect=mock_run):
+            result = await configure_default_browser()
+        assert result.ok and result.skipped
+        assert "firefox_firefox" in result.message
+
+    async def test_configure_default_browser_none_installed(self):
+        from linwin.linux.tasks.xrdp import configure_default_browser
+        with patch("linwin.linux.tasks.xrdp.run_local", new_callable=AsyncMock, return_value=_ok("no")):
+            result = await configure_default_browser()
+        assert result.ok and result.skipped
+
+    async def test_enable_xrdp_service_prerequisite_failure_propagates(self):
+        from linwin.shared.task_result import TaskResult
+        from linwin.linux.tasks.xrdp import enable_xrdp_service
+        ok = TaskResult(ok=True, message="ok")
+        with patch("linwin.linux.tasks.xrdp.fix_x11_socket_dir", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.fix_xrdp_ssl_permissions", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.create_systemd_overrides", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.configure_colord_polkit", new_callable=AsyncMock,
+                   return_value=TaskResult(ok=False, message="tee failed")), \
+             patch("linwin.linux.tasks.xrdp.configure_logind_delay", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.enable_user_linger", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.mask_gdm", new_callable=AsyncMock, return_value=ok), \
+             patch("linwin.linux.tasks.xrdp.run_local", new_callable=AsyncMock, return_value=_ok()):
+            result = await enable_xrdp_service()
+            assert not result.ok
+            assert "colord polkit rule" in result.message
 
     async def test_check_xrdp_running_true(self):
         from linwin.linux.tasks.xrdp import check_xrdp_running

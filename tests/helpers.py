@@ -31,6 +31,62 @@ def _cert_flag(binary: str) -> str:
     return "/cert:ignore" if binary == "xfreerdp3" else "/cert-ignore"
 
 
+def _xrdp_connect_hosts(distro: str) -> list[str]:
+    """Candidate Windows-side hosts for reaching xrdp inside *distro*.
+
+    The direct VM IP is what production mstsc uses and reaches any
+    distro's ports; Windows localhost forwarding is kept as a fallback
+    because WSL only provides it for some ports (e.g. it covers the
+    real distro's 3390 but not the test clone's 3391).
+    """
+    hosts = []
+    r = _run(run_wsl(distro, "hostname -I"))
+    if r.success and r.output.strip():
+        hosts.append(r.output.strip().split()[0])
+    hosts.append("localhost")
+    return hosts
+
+
+def _assert_xrdp_accepts_connections(distro: str, xrdp_port: int) -> None:
+    """Assert xrdp accepts a TCP + X.224 negotiation from Windows.
+
+    Tries the VM IP first, then localhost. Connection refusals move on
+    to the next host; once connected, a bad handshake fails immediately.
+    """
+    hosts = _xrdp_connect_hosts(distro)
+    last_error: Exception | None = None
+    for host in hosts:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(10)
+        try:
+            sock.connect((host, xrdp_port))
+        except OSError as e:
+            sock.close()
+            last_error = e
+            continue
+        try:
+            cookie = b"Cookie: mstshash=test\r\n"
+            rdp_neg_req = bytes([0x01, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00, 0x00])
+            variable = cookie + rdp_neg_req
+            li = 6 + len(variable)
+            x224_cr = bytes([li, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00]) + variable
+            tpkt_len = 4 + len(x224_cr)
+            tpkt = bytes([0x03, 0x00, (tpkt_len >> 8) & 0xFF, tpkt_len & 0xFF])
+            sock.sendall(tpkt + x224_cr)
+            resp_hdr = _recv_exact(sock, 4)
+            assert resp_hdr[0] == 3, f"Bad TPKT version: {resp_hdr[0]}"
+            resp_len = (resp_hdr[2] << 8) | resp_hdr[3]
+            body = _recv_exact(sock, resp_len - 4)
+            assert body[1] == 0xD0, f"Expected X.224 CC (0xD0), got 0x{body[1]:02X}"
+            return
+        finally:
+            sock.close()
+    raise AssertionError(
+        f"xrdp not accepting connections on port {xrdp_port} "
+        f"(tried {', '.join(hosts)}): {last_error}"
+    )
+
+
 def _collect_diagnostics(distro: str, user: str) -> str:
     """Collect all relevant logs after a session failure."""
     sections: list[str] = []

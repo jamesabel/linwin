@@ -5,27 +5,37 @@ from __future__ import annotations
 from ...shared.config import SnapPackage
 from ...shared.subprocess_runner import LineCallback, run_local
 from ...shared.task_result import TaskResult
+from .apt import APT_ENV, APT_OPTS
 
 
 async def check_systemd_running(on_line: LineCallback | None = None) -> bool:
     """Snap requires systemd. Check it's running."""
-    result = await run_local("systemctl is-system-running 2>/dev/null", on_line)
+    result = await run_local("systemctl is-system-running 2>/dev/null", on_line, timeout=30)
     output = result.output.strip()
     return output in ("running", "degraded")
+
+
+async def setup_snapd(on_line: LineCallback | None = None) -> TaskResult:
+    """The combined 'setup_snapd' step: require systemd, then ensure snapd."""
+    if not await check_systemd_running(on_line):
+        return TaskResult(ok=False, message="systemd not running. Snaps require systemd + WSL restart.")
+    return await ensure_snapd(on_line)
 
 
 async def ensure_snapd(on_line: LineCallback | None = None) -> TaskResult:
     """Ensure snapd is installed and running."""
     # Check if snap command exists
-    result = await run_local("command -v snap > /dev/null 2>&1 && echo yes || echo no", on_line)
+    result = await run_local("command -v snap > /dev/null 2>&1 && echo yes || echo no", on_line, timeout=30)
     if result.output.strip() != "yes":
-        install = await run_local("sudo apt install -y snapd", on_line, timeout=120)
+        install = await run_local(
+            f"sudo {APT_ENV} apt install -y {APT_OPTS} snapd", on_line, timeout=600,
+        )
         if not install.success:
             return TaskResult(ok=False, message="Failed to install snapd")
 
     # Enable snapd
-    await run_local("sudo systemctl enable --now snapd.socket 2>/dev/null", on_line)
-    await run_local("sudo systemctl enable --now snapd 2>/dev/null", on_line)
+    await run_local("sudo systemctl enable --now snapd.socket 2>/dev/null", on_line, timeout=60)
+    await run_local("sudo systemctl enable --now snapd 2>/dev/null", on_line, timeout=60)
 
     # Wait for seed
     await run_local("sudo snap wait system seed.loaded 2>/dev/null || sleep 5", on_line, timeout=30)
@@ -35,7 +45,7 @@ async def ensure_snapd(on_line: LineCallback | None = None) -> TaskResult:
 
 async def is_snap_installed(name: str, on_line: LineCallback | None = None) -> bool:
     """Check if a snap is installed."""
-    result = await run_local(f"snap list {name} 2>/dev/null && echo yes || echo no", on_line)
+    result = await run_local(f"snap list {name} 2>/dev/null && echo yes || echo no", on_line, timeout=30)
     return "yes" in result.output
 
 

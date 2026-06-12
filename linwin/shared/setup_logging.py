@@ -16,20 +16,29 @@ from pathlib import Path
 _LOG_INITIALIZED = False
 
 
-def get_log_dir() -> Path:
-    """Return the platform-appropriate directory for log files."""
+def get_app_data_dir() -> Path:
+    """Return the per-user linwin app-data directory.
+
+    Single source of truth for the app-data root — state files and logs
+    must live under the same directory.
+    """
     if sys.platform == "win32":
         local_app_data = os.environ.get("LOCALAPPDATA", "")
         if not local_app_data:
             local_app_data = os.path.join(
                 os.environ.get("USERPROFILE", "."), "AppData", "Local"
             )
-        return Path(local_app_data) / "linwin" / "logs"
+        return Path(local_app_data) / "linwin"
     else:
         xdg = os.environ.get("XDG_DATA_HOME", "")
         if not xdg:
             xdg = os.path.join(os.path.expanduser("~"), ".local", "share")
-        return Path(xdg) / "linwin" / "logs"
+        return Path(xdg) / "linwin"
+
+
+def get_log_dir() -> Path:
+    """Return the platform-appropriate directory for log files."""
+    return get_app_data_dir() / "logs"
 
 
 def setup_logging() -> logging.Logger:

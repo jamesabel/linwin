@@ -56,8 +56,12 @@ async def install_distro(config: SetupConfig, on_line: LineCallback | None = Non
     if await is_distro_registered(config, on_line):
         return TaskResult(True, "Distro already registered", skipped=True)
 
+    # --no-launch: without it WSL starts the distro's interactive OOBE
+    # ("Enter new UNIX username:"), which can never be answered from the
+    # TUI and would block until the timeout. The user account is created
+    # explicitly later (see create_default_user).
     result = await run_wsl_exec(
-        ["--install", "-d", config.distroName],
+        ["--install", "-d", config.distroName, "--no-launch"],
         on_line=on_line,
         timeout=600,
     )
@@ -120,32 +124,182 @@ async def import_distro(config: SetupConfig, tar_path: str, on_line: LineCallbac
     return TaskResult(False, "Import failed")
 
 
+async def user_exists(config: SetupConfig, username: str, on_line: LineCallback | None = None) -> bool:
+    """Check that a user has an actual passwd entry in the distro."""
+    result = await run_wsl(
+        config.distroImportName,
+        f"getent passwd '{username}' > /dev/null 2>&1 && echo yes || echo no",
+        on_line=on_line,
+        timeout=60,
+    )
+    return result.output.strip() == "yes"
+
+
 async def detect_default_user(config: SetupConfig, on_line: LineCallback | None = None) -> str | None:
-    """Detect the non-root user from /home/ inside the distro."""
-    result = await run_wsl(config.distroImportName, "ls /home/ 2>/dev/null", on_line=on_line)
+    """Detect a non-root user from /home/ inside the distro.
+
+    Only returns users with a passwd entry — a /home directory alone can
+    be a leftover from a deleted account, and making it the WSL default
+    breaks every invocation with getpwnam errors.
+    """
+    result = await run_wsl(
+        config.distroImportName,
+        'for u in $(ls /home/ 2>/dev/null); do getent passwd "$u" > /dev/null 2>&1 && echo "$u"; done',
+        on_line=on_line,
+        timeout=60,
+    )
     if result.success and result.stdout_lines:
         users = [u.strip() for u in result.stdout_lines if u.strip() and u.strip() != "root"]
         return users[0] if users else None
     return None
 
 
-async def set_default_user(config: SetupConfig, username: str, on_line: LineCallback | None = None) -> TaskResult:
-    """Set the default user in /etc/wsl.conf."""
-    # Check if already set
+async def get_configured_default_user(config: SetupConfig, on_line: LineCallback | None = None) -> str | None:
+    """Read the default user already set in /etc/wsl.conf, if any.
+
+    When a default is configured, that user — not the first /home entry —
+    is who the headless setup steps run as, so passwordless sudo must be
+    granted to them.
+    """
+    result = await run_wsl(
+        config.distroImportName,
+        "grep -m1 '^default=' /etc/wsl.conf 2>/dev/null | cut -d= -f2",
+        on_line=on_line,
+        timeout=60,
+    )
+    if result.success:
+        user = result.output.strip()
+        return user or None
+    return None
+
+
+async def create_default_user(
+    config: SetupConfig, username: str = "ubuntu", on_line: LineCallback | None = None
+) -> TaskResult:
+    """Create the default non-root user when none exists.
+
+    With ``--no-launch`` the OOBE never runs, so user creation is our
+    job. Runs while the distro's default user is still root
+    (post-import), so no sudo password is needed.
+    """
+    result = await run_wsl(
+        config.distroImportName,
+        f"sudo useradd -m -s /bin/bash -G sudo,adm,dialout,cdrom,floppy,audio,dip,video,plugdev {username}",
+        on_line=on_line,
+        timeout=60,
+    )
+    if result.success:
+        return TaskResult(True, f"Created user {username}")
+    return TaskResult(False, f"Failed to create user {username}")
+
+
+async def ensure_passwordless_sudo(
+    config: SetupConfig, username: str, on_line: LineCallback | None = None
+) -> TaskResult:
+    """Install a NOPASSWD sudoers drop-in for the default user.
+
+    The headless Linux setup steps run sudo with no usable tty; without
+    NOPASSWD, sudo blocks on an invisible password prompt (or fails with
+    "a terminal is required"). Must run while sudo is still passwordless
+    — i.e. while the distro default user is root, before set_default_user.
+    """
+    drop_in = f"/etc/sudoers.d/linwin-{username}"
     check = await run_wsl(
         config.distroImportName,
-        "grep -q '\\[user\\]' /etc/wsl.conf 2>/dev/null && echo yes || echo no",
+        f"test -f {drop_in} && echo yes || echo no",
         on_line=on_line,
+        timeout=60,
     )
     if check.output.strip() == "yes":
-        return TaskResult(True, "Default user already configured", skipped=True)
+        return TaskResult(True, "Passwordless sudo already configured", skipped=True)
 
     cmd = (
-        f"echo '' | sudo tee -a /etc/wsl.conf > /dev/null && "
-        f"echo '[user]' | sudo tee -a /etc/wsl.conf > /dev/null && "
-        f"echo 'default={username}' | sudo tee -a /etc/wsl.conf > /dev/null"
+        f"echo '{username} ALL=(ALL) NOPASSWD:ALL' | sudo tee {drop_in} > /dev/null && "
+        f"sudo chmod 0440 {drop_in} && sudo visudo -cf {drop_in}"
     )
-    result = await run_wsl(config.distroImportName, cmd, on_line=on_line)
+    result = await run_wsl(config.distroImportName, cmd, on_line=on_line, timeout=60)
+    if result.success:
+        return TaskResult(True, f"Passwordless sudo configured for {username}")
+    return TaskResult(False, f"Failed to configure passwordless sudo for {username}")
+
+
+async def get_password_status(config: SetupConfig, username: str, on_line: LineCallback | None = None) -> str:
+    """Return the user's password status flag from ``passwd -S``.
+
+    "P" = usable password set, "L" = locked (e.g. fresh useradd),
+    "NP" = no password, "" = could not determine.
+    """
+    result = await run_wsl(
+        config.distroImportName,
+        f"sudo passwd -S {username} 2>/dev/null | cut -d' ' -f2",
+        on_line=on_line,
+        timeout=60,
+    )
+    return result.output.strip() if result.success else ""
+
+
+async def set_user_password(
+    config: SetupConfig, username: str, password: str, on_line: LineCallback | None = None
+) -> TaskResult:
+    """Set the user's password via chpasswd.
+
+    The password travels through a short-lived temp file rather than
+    the command line — every command is written verbatim to setup.log.
+    """
+    from ...shared.config import windows_to_wsl_path
+
+    pw_file = os.path.join(tempfile.gettempdir(), "linwin_pw.txt")
+    with open(pw_file, "w", newline="\n") as f:
+        f.write(f"{username}:{password}\n")
+    try:
+        wsl_path = windows_to_wsl_path(pw_file)
+        result = await run_wsl(
+            config.distroImportName,
+            f"sudo chpasswd < '{wsl_path}'",
+            on_line=on_line,
+            timeout=60,
+        )
+    finally:
+        try:
+            os.remove(pw_file)
+        except OSError:
+            pass
+    if result.success:
+        return TaskResult(True, f"Password set for {username}")
+    return TaskResult(False, f"Failed to set password for {username}")
+
+
+async def set_default_user(config: SetupConfig, username: str, on_line: LineCallback | None = None) -> TaskResult:
+    """Set the default user in /etc/wsl.conf.
+
+    Replaces a wrong existing ``default=`` (e.g. a leftover
+    ``default=root``) instead of skipping whenever a ``[user]`` section
+    happens to exist. Takes effect on the next WSL restart.
+    """
+    current = await get_configured_default_user(config, on_line)
+    if current == username:
+        return TaskResult(True, "Default user already configured", skipped=True)
+
+    if current:
+        # A different default exists — replace it in place.
+        cmd = f"sudo sed -i 's/^default=.*/default={username}/' /etc/wsl.conf"
+    else:
+        check = await run_wsl(
+            config.distroImportName,
+            "grep -q '\\[user\\]' /etc/wsl.conf 2>/dev/null && echo yes || echo no",
+            on_line=on_line,
+            timeout=60,
+        )
+        if check.output.strip() == "yes":
+            # Section exists without a default= line — add one under it.
+            cmd = f"sudo sed -i '/\\[user\\]/a default={username}' /etc/wsl.conf"
+        else:
+            cmd = (
+                f"echo '' | sudo tee -a /etc/wsl.conf > /dev/null && "
+                f"echo '[user]' | sudo tee -a /etc/wsl.conf > /dev/null && "
+                f"echo 'default={username}' | sudo tee -a /etc/wsl.conf > /dev/null"
+            )
+    result = await run_wsl(config.distroImportName, cmd, on_line=on_line, timeout=60)
     if result.success:
         return TaskResult(True, f"Default user set to {username}")
     return TaskResult(False, "Failed to set default user")
@@ -158,39 +312,57 @@ async def shutdown_wsl(on_line: LineCallback | None = None) -> TaskResult:
 
 
 async def wait_for_wsl_ready(
-    config: SetupConfig, on_line: LineCallback | None = None, max_attempts: int = 10
+    config: SetupConfig,
+    on_line: LineCallback | None = None,
+    max_attempts: int = 10,
+    require_systemd: bool = True,
 ) -> bool:
     """Wait until the WSL distro is responsive after a restart.
 
-    Probes with a simple 'echo ready' command every 2 seconds,
-    then verifies systemd services (including xrdp if installed)
-    have settled before returning.
+    Probes with a simple 'echo ready' command every 2 seconds, then —
+    when ``require_systemd`` is True — verifies systemd services
+    (including xrdp if installed) have settled before returning.
+
+    Pass ``require_systemd=False`` before the enable-systemd setup step
+    has run: systemd is not PID 1 yet, so the phase-2 probe could never
+    succeed and would burn all attempts.
+
     Returns True when WSL responds, False if all attempts exhausted.
     """
     import asyncio
 
     # Phase 1: wait for basic shell responsiveness
     for attempt in range(max_attempts):
-        result = await run_wsl(config.distroImportName, "echo ready", on_line=on_line)
+        result = await run_wsl(config.distroImportName, "echo ready", on_line=on_line, timeout=30)
         if result.success and "ready" in result.output:
             break
         await asyncio.sleep(2)
     else:
         return False
 
-    # Phase 2: wait for systemd to finish booting and xrdp to stabilise
+    if not require_systemd:
+        return True
+
+    # Phase 2: wait for systemd to finish booting and xrdp to stabilise.
+    # Each value is tagged with a marker so a sub-command with empty
+    # output can't shift the others into the wrong field.
     for attempt in range(max_attempts):
         result = await run_wsl(
             config.distroImportName,
-            "systemctl is-system-running 2>/dev/null; "
-            "systemctl is-active xrdp 2>/dev/null; "
-            "systemctl is-active xrdp-sesman 2>/dev/null",
+            'echo "STATE:$(systemctl is-system-running 2>/dev/null)"; '
+            'echo "XRDP:$(systemctl is-active xrdp 2>/dev/null)"; '
+            'echo "SESMAN:$(systemctl is-active xrdp-sesman 2>/dev/null)"',
             on_line=on_line,
+            timeout=30,
         )
-        lines = [l.strip() for l in result.stdout_lines if l.strip()]
-        system_state = lines[0] if lines else ""
-        xrdp_active = lines[1] if len(lines) > 1 else ""
-        sesman_active = lines[2] if len(lines) > 2 else ""
+        values = {"STATE": "", "XRDP": "", "SESMAN": ""}
+        for line in result.stdout_lines:
+            key, sep, value = line.strip().partition(":")
+            if sep and key in values:
+                values[key] = value.strip()
+        system_state = values["STATE"]
+        xrdp_active = values["XRDP"]
+        sesman_active = values["SESMAN"]
 
         # System must be running/degraded (not "starting")
         if system_state in ("running", "degraded"):

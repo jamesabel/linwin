@@ -125,9 +125,7 @@ class ConfigEditorScreen(ClickDispatchScreen):
         wc.swap = self.query_one("#input-swap", Input).value
         wc.defaultVhdSize = self.query_one("#input-vhd-size", Input).value
 
-        from ...shared.config import SnapPackage
         c.optionalApps = collect_app_selections(self.query_one)
-        c.snaps = [SnapPackage(a.id, a.classic) for a in c.optionalApps if a.install_method == "snap"]
         c.aptPackages = parse_apt_input(self.query_one("#input-apt-packages", Input).value)
 
         save_config(c)

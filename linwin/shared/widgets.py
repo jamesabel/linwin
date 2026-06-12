@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from rich.markup import escape as rich_escape
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -145,6 +147,7 @@ class TaskRow(Widget):
     """
 
     status: reactive[str] = reactive("pending")
+    detail: reactive[str] = reactive("")
 
     STATUS_TEXT = {
         "pending": "Pending",
@@ -154,10 +157,18 @@ class TaskRow(Widget):
         "skipped": "Skipped",
     }
 
+    # ASCII spinner shown next to the elapsed time while running, so a
+    # long task (apt upgrade, distro export) visibly progresses instead
+    # of sitting on a static "Running...".
+    _SPINNER = "|/-\\"
+
     def __init__(self, task_id: str, name: str, **kwargs) -> None:
         super().__init__(**kwargs)
         self.task_id = task_id
         self.task_name = name
+        self._spin_timer = None
+        self._spin_index = 0
+        self._run_started = 0.0
 
     def compose(self) -> ComposeResult:
         yield Label(self.task_name, classes="task-name")
@@ -169,9 +180,45 @@ class TaskRow(Widget):
             status_label = self.query_one(".task-status", Label)
             status_label.update(self.STATUS_TEXT.get(value, value))
 
+            if value == "running":
+                self._run_started = time.monotonic()
+                self._spin_index = 0
+                if self._spin_timer is None:
+                    self._spin_timer = self.set_interval(1.0, self._tick_running)
+                else:
+                    self._spin_timer.resume()
+            elif self._spin_timer is not None:
+                self._spin_timer.pause()
+
             for s in self.STATUS_TEXT:
                 status_label.remove_class(f"task-status-{s}")
             status_label.add_class(f"task-status-{value}")
+        except Exception:
+            pass  # Widget not yet mounted
+
+    def _tick_running(self) -> None:
+        if self.status != "running":
+            return
+        elapsed = int(time.monotonic() - self._run_started)
+        minutes, seconds = divmod(elapsed, 60)
+        self._spin_index = (self._spin_index + 1) % len(self._SPINNER)
+        spin = self._SPINNER[self._spin_index]
+        try:
+            self.query_one(".task-status", Label).update(
+                f"Running {spin} {minutes}:{seconds:02d}"
+            )
+        except Exception:
+            pass
+
+    def watch_detail(self, value: str) -> None:
+        if value:
+            get_logger().info("TASK %-25s    (%s)", self.task_id, value)
+        try:
+            name_label = self.query_one(".task-name", Label)
+            if value:
+                name_label.update(f"{self.task_name}  [dim]({rich_escape(value)})[/]")
+            else:
+                name_label.update(self.task_name)
         except Exception:
             pass  # Widget not yet mounted
 
@@ -198,11 +245,25 @@ class TaskListWidget(Widget):
             for task_id, task_name in self._tasks:
                 yield TaskRow(task_id, task_name, id=f"task-{task_id}")
 
-    def set_status(self, task_id: str, status: str) -> None:
-        """Update a task's status by its ID."""
+    def set_status(self, task_id: str, status: str, detail: str = "") -> None:
+        """Update a task's status by its ID.
+
+        ``detail`` is shown dimmed next to the task name — use it to say
+        *why* a task was skipped or failed.
+        """
         try:
             row = self.query_one(f"#task-{task_id}", TaskRow)
             row.status = status
+            if detail:
+                row.detail = detail
+        except Exception:
+            pass
+
+    def set_detail(self, task_id: str, detail: str) -> None:
+        """Set or clear (with "") the dimmed detail text next to a task's name."""
+        try:
+            row = self.query_one(f"#task-{task_id}", TaskRow)
+            row.detail = detail
         except Exception:
             pass
 
@@ -307,6 +368,7 @@ class VerifyDashboard(Widget):
         self._passed = 0
         self._failed = 0
         self._warnings = 0
+        self._rows: list[tuple[str, str, str]] = []
 
     def compose(self) -> ComposeResult:
         yield Static(f"[bold]{self._title}[/]")
@@ -318,6 +380,7 @@ class VerifyDashboard(Widget):
     def add_check(self, name: str, passed: bool, detail: str = "", warn: bool = False) -> None:
         tag = "WARN" if warn else ("PASS" if passed else "FAIL")
         get_logger().info("VERIFY %-6s %s  %s", tag, name, detail)
+        self._rows.append((tag, name, detail))
         table = self.query_one(DataTable)
         if warn:
             status = "[yellow]WARN[/]"
@@ -340,6 +403,20 @@ class VerifyDashboard(Widget):
             f"[yellow]{self._warnings} warnings[/] "
             f"({total} total)"
         )
+
+    def get_text(self) -> str:
+        """Return all check results as plain text (for clipboard copy)."""
+        lines = [self._title]
+        for tag, name, detail in self._rows:
+            line = f"  {tag:<4}  {name}"
+            if detail:
+                line += f"  ({detail})"
+            lines.append(line)
+        lines.append(
+            f"{self._passed} passed, {self._failed} failed, "
+            f"{self._warnings} warnings"
+        )
+        return "\n".join(lines)
 
     @property
     def all_passed(self) -> bool:
