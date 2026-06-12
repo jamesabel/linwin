@@ -12,6 +12,7 @@ from ...shared.config import SetupConfig
 from ...shared.subprocess_runner import run_powershell, run_wsl
 from ...shared.verify_checks import (
     check_apt_packages,
+    check_command,
     check_drive_mounted,
     check_snap_packages,
     check_snapd,
@@ -151,6 +152,15 @@ async def run_full_verification(
             check_drive_mounted(wsl_run, config.wslDriveLetter),
         )
 
+        # Installer-method apps: their CLI must resolve on the login PATH
+        installer_apps = [a for a in config.optionalApps if a.install_method == "installer"]
+        installer_states: dict[str, bool] = {}
+        if installer_apps:
+            results = await asyncio.gather(
+                *(check_command(wsl_run, a.command.split()[0]) for a in installer_apps)
+            )
+            installer_states = {a.id: ok for a, ok in zip(installer_apps, results)}
+
         await _check("systemd is PID 1", is_systemd, init_name, category="linux")
         await _check("snapd service running", snapd_ok, category="linux")
 
@@ -162,6 +172,20 @@ async def run_full_verification(
                 await _check(f"snap: {app.id}", snap_states.get(app.id, False), category="linux")
             elif app.install_method == "apt":
                 await _check(f"apt: {app.id}", apt_states.get(app.id, False), category="linux")
+            elif app.install_method == "installer":
+                await _check(f"app: {app.id}", installer_states.get(app.id, False), category="linux")
+
+        if any(a.id == "openclaw" for a in installer_apps):
+            # Inactive until the user completes 'openclaw onboard' — warn only.
+            r = await run_wsl(
+                config.distroImportName,
+                "XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active openclaw-gateway 2>/dev/null",
+                timeout=60,
+            )
+            gateway_active = r.output.strip() == "active"
+            await _check("openclaw gateway service", gateway_active,
+                         "" if gateway_active else "run 'openclaw onboard' in Ubuntu",
+                         warn=not gateway_active, category="linux")
 
         has_display = bool(display_r.output.strip())
         await _check("DISPLAY set", has_display, display_r.output.strip(),

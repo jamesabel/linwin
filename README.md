@@ -85,7 +85,7 @@ Configuration is stored in a per-user sqlite database (via the `pref` package) a
 | `wslconfig.processors` | CPUs ÷ 2 | CPU cores for WSL2 (min 1) |
 | `wslconfig.swap` | RAM ÷ 8 | Swap size (min 4 GB) |
 | `wslconfig.defaultVhdSize` | `512GB` | Max VHD size |
-| `optionalApps` | *(empty)* | Apps to install and launch (VS Code, PyCharm, Firefox, GIMP, ...) — pick from the curated registry in the editor |
+| `optionalApps` | *(empty)* | Apps to install and launch (VS Code, PyCharm, Firefox, GIMP, OpenClaw, ...) — pick from the curated registry in the editor |
 | `aptPackages` | nautilus, x11-apps, xfce4, xfce4-terminal, xrdp, dbus-x11 | Apt packages to install |
 | `xrdpPort` | `3390` | Port for xrdp (avoids conflict with Windows RDP on 3389) |
 
@@ -119,6 +119,16 @@ uv run python -m pytest tests/ --cov=linwin               # with coverage
 ```
 
 Most of the suite is mocked and runs in seconds (it's what CI runs). The `test_rdp_*` modules are live end-to-end tests — RDP login, session stability, desktop interaction — that run against a **dedicated clone** of your configured distro: created at the start of the session via export/import, isolated on its own ports and display range, and unregistered at the end so the disk space is reclaimed. They never touch your real distro and skip when there's no distro to clone. Set `LINWIN_TEST_KEEP=1` to keep the clone between runs for faster iteration.
+
+## OpenClaw Agent
+
+Select **OpenClaw (AI agent)** in Configure Settings and re-run setup to install the [OpenClaw](https://openclaw.ai) personal AI agent inside WSL via its official installer (Node.js is handled automatically). Setup enables the gateway as a systemd user service with lingering, so it keeps running with no terminal open. To finish configuration (model API keys, chat channels), run once in an Ubuntu terminal:
+
+```bash
+openclaw onboard
+```
+
+The dashboard is then available from Windows at `http://localhost:18789`. To keep the agent running across Windows reboots, use **Maintenance → Toggle WSL Autostart at Logon** in the launcher — it creates a per-user scheduled task (no admin needed) that boots the distro at logon; the lingering gateway service does the rest. A browser from the registry (e.g. Firefox) is recommended alongside OpenClaw for its browsing features and the dashboard.
 
 ## Detailed Guide
 

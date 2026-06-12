@@ -20,9 +20,14 @@ from ...shared.config import SetupConfig, SnapPackage
 from ...shared.headless_protocol import emit_error, emit_log, emit_task
 from ...shared.subprocess_runner import LineCallback
 from ...shared.task_result import TaskResult
-from . import apt, desktop, snaps, systemd, wslg, xrdp
+from . import apt, desktop, openclaw, snaps, systemd, wslg, xrdp
 
 StepCoro = Callable[[LineCallback | None], Awaitable[TaskResult]]
+
+# Installers for install_method="installer" apps, keyed by AppEntry.id.
+APP_INSTALLERS: dict[str, StepCoro] = {
+    "openclaw": openclaw.install_openclaw,
+}
 
 
 @dataclass
@@ -44,6 +49,11 @@ class SetupStep:
 
 
 SNAPD_STEP_ID = "setup_snapd"
+
+
+async def _no_installer(app_id: str) -> TaskResult:
+    """Placeholder for installer-method apps with no registered installer."""
+    return TaskResult(ok=True, message=f"No installer registered for {app_id}", skipped=True)
 
 
 async def verify_wslg_step(on_line: LineCallback | None = None) -> TaskResult:
@@ -91,6 +101,15 @@ def build_package_steps(config: SetupConfig, include_systemd: bool = True) -> li
                 f"apt_opt_{app.id}", f"Install {app.display_name} (apt)",
                 lambda on_line=None, a=app: apt.install_apt_package(a.id, on_line),
             ))
+        elif app.install_method == "installer":
+            installer = APP_INSTALLERS.get(app.id)
+            if installer is not None:
+                steps.append(SetupStep(f"app_{app.id}", f"Install {app.display_name}", installer))
+            else:
+                steps.append(SetupStep(
+                    f"app_{app.id}", f"Install {app.display_name}",
+                    lambda on_line=None, a=app: _no_installer(a.id),
+                ))
     steps.append(SetupStep(
         "desktop_icons", "Create desktop shortcuts",
         lambda on_line=None, a=tuple(config.optionalApps):

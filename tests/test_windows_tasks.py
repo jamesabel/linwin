@@ -508,6 +508,33 @@ class TestWslInstall:
             result = await create_default_user(config, "ubuntu")
             assert not result.ok
 
+    async def test_autostart_enable_disable_status(self):
+        from linwin.windows.tasks import autostart
+        config = SetupConfig()
+        commands = []
+
+        async def mock_run(args, on_line=None, timeout=None):
+            commands.append(args)
+            return _ok()
+
+        with patch("linwin.windows.tasks.autostart.run_command", side_effect=mock_run):
+            assert await autostart.is_autostart_enabled() is True
+            result = await autostart.enable_wsl_autostart(config)
+            assert result.ok
+            result = await autostart.disable_wsl_autostart()
+            assert result.ok
+
+        create = next(a for a in commands if "/Create" in a)
+        # Per-user logon task booting the configured distro — no admin flags
+        assert "ONLOGON" in create
+        assert any("wsl.exe -d Ubuntu" in part for part in create)
+        assert "/RU" not in create and "/RL" not in create
+
+    async def test_autostart_not_enabled(self):
+        from linwin.windows.tasks import autostart
+        with patch("linwin.windows.tasks.autostart.run_command", new_callable=AsyncMock, return_value=_fail()):
+            assert await autostart.is_autostart_enabled() is False
+
     async def test_get_password_status(self):
         from linwin.windows.tasks.wsl_install import get_password_status
         config = SetupConfig()

@@ -128,6 +128,77 @@ class TestDesktopIcons:
         assert "no launcher found" in result.message and "MATLAB" in result.message
 
 
+# ── openclaw ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestOpenClaw:
+    async def test_already_installed_skips(self):
+        from linwin.linux.tasks.openclaw import install_openclaw
+        with patch("linwin.linux.tasks.openclaw.run_local", new_callable=AsyncMock, return_value=_ok("yes")):
+            result = await install_openclaw()
+        assert result.ok and result.skipped
+
+    async def test_fresh_install_runs_installer_and_gateway(self):
+        from linwin.linux.tasks.openclaw import install_openclaw
+        commands = []
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            commands.append(cmd)
+            if "command -v openclaw" in cmd:
+                return _ok("no")
+            return _ok()
+
+        with patch("linwin.linux.tasks.openclaw.run_local", side_effect=mock_run):
+            result = await install_openclaw()
+        assert result.ok and not result.skipped
+        joined = "\n".join(commands)
+        assert "openclaw.ai/install.sh" in joined and "--no-onboard" in joined
+        assert "enable-linger" in joined
+        assert "openclaw gateway install" in joined
+        assert "onboard" in result.message  # tells the user how to finish
+
+    async def test_installer_failure_propagates(self):
+        from linwin.linux.tasks.openclaw import install_openclaw
+
+        async def mock_run(cmd, on_line=None, timeout=None):
+            if "command -v openclaw" in cmd:
+                return _ok("no")
+            if "install.sh" in cmd:
+                return _fail()
+            return _ok()
+
+        with patch("linwin.linux.tasks.openclaw.run_local", side_effect=mock_run):
+            result = await install_openclaw()
+        assert not result.ok
+
+    async def test_steps_dispatch_installer_method(self):
+        from linwin.shared.config import AppEntry, SetupConfig
+        from linwin.linux.tasks.steps import build_package_steps
+
+        config = SetupConfig()
+        config.aptPackages = []
+        config.optionalApps = [
+            AppEntry("openclaw", "OpenClaw (AI agent)", "openclaw dashboard", "installer", classic=False),
+            AppEntry("mystery", "Mystery App", "mystery", "installer"),
+        ]
+        ids = [s.task_id for s in build_package_steps(config)]
+        assert "app_openclaw" in ids
+        assert "app_mystery" in ids  # present but skips at runtime
+
+    async def test_unregistered_installer_skips(self):
+        from linwin.shared.config import AppEntry, SetupConfig
+        from linwin.linux.tasks.steps import build_package_steps
+
+        config = SetupConfig()
+        config.aptPackages = []
+        config.optionalApps = [AppEntry("mystery", "Mystery App", "mystery", "installer")]
+        step = next(s for s in build_package_steps(config) if s.task_id == "app_mystery")
+        result = await step.run(None)
+        assert result.ok and result.skipped
+        assert "No installer registered" in result.message
+
+
 # ── snaps ────────────────────────────────────────────────────────────
 
 

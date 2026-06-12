@@ -101,6 +101,19 @@ async def check_snap_package(runner: Runner, name: str) -> bool:
     return "yes" in result.output
 
 
+async def check_command(runner: Runner, name: str) -> bool:
+    """Check that a command resolves on the login-shell PATH.
+
+    Login shell so installer-managed paths (npm prefix, /snap/bin) are
+    included. ``$``-free for wsl.exe relay safety.
+    """
+    result = await _run_with_retry(
+        runner,
+        f"bash -lc 'command -v {name}' > /dev/null 2>&1 && echo yes || echo no",
+    )
+    return result.output.strip() == "yes"
+
+
 async def check_display_set() -> tuple[bool, str]:
     """Check if the DISPLAY environment variable is set."""
     value = os.environ.get("DISPLAY", "")
