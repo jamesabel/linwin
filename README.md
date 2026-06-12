@@ -130,6 +130,22 @@ openclaw onboard
 
 The dashboard is then available from Windows at `http://localhost:18789`. To keep the agent running across Windows reboots, use **Maintenance → Toggle WSL Autostart at Logon** in the launcher — it creates a per-user scheduled task (no admin needed) that boots the distro at logon; the lingering gateway service does the rest. A browser from the registry (e.g. Firefox) is recommended alongside OpenClaw for its browsing features and the dashboard.
 
+Useful commands inside Ubuntu:
+
+```bash
+openclaw gateway status      # is the agent running?
+openclaw doctor              # diagnose installation issues
+openclaw update              # update to the latest version
+systemctl --user status openclaw-gateway   # the underlying service
+```
+
+> **Security note:** OpenClaw is a powerful agent — it can read files, run
+> commands, and act on connected chat channels on your behalf. It runs inside
+> your WSL distro under your Linux user. Review its
+> [security guidance](https://docs.openclaw.ai/gateway/security) before
+> connecting channels or granting API keys, and treat the gateway dashboard
+> (localhost-only by default) accordingly.
+
 ## Detailed Guide
 
 See [wsl_ubuntu_gnome.md](wsl_ubuntu_gnome.md) for the full manual guide with GUI comparison (WSLg vs. external X servers), troubleshooting, security notes, and decision checklist.
