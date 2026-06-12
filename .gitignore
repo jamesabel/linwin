@@ -11,3 +11,5 @@ app/
 dist/
 *.nsi
 *.exe
+
+*secrets*/
