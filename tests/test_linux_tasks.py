@@ -732,10 +732,10 @@ class TestXrdp:
             commands.append(cmd)
             if "test -x /snap/bin/firefox" in cmd:
                 return _ok("yes")
+            if "grep -m1 '^WebBrowser='" in cmd:
+                return _ok("")  # no helper configured yet
             if "test -x" in cmd:
                 return _ok("no")
-            if "grep -qx" in cmd:
-                return _ok("no")  # not yet configured
             return _ok()
 
         with patch("linwin.linux.tasks.xrdp.run_local", side_effect=mock_run):
@@ -751,13 +751,18 @@ class TestXrdp:
         async def mock_run(cmd, on_line=None, timeout=None):
             if "test -x /snap/bin/firefox" in cmd:
                 return _ok("yes")
-            if "grep -qx" in cmd:
+            if "grep -m1 '^WebBrowser='" in cmd:
+                # XFCE-generated helper id from the snap desktop file —
+                # must be respected, not clobbered
+                return _ok("firefox_firefox")
+            if "test -x /etc/alternatives" in cmd:
                 return _ok("yes")
             return _ok("no")
 
         with patch("linwin.linux.tasks.xrdp.run_local", side_effect=mock_run):
             result = await configure_default_browser()
         assert result.ok and result.skipped
+        assert "firefox_firefox" in result.message
 
     async def test_configure_default_browser_none_installed(self):
         from linwin.linux.tasks.xrdp import configure_default_browser

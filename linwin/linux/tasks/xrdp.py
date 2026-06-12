@@ -466,28 +466,40 @@ async def configure_default_browser(on_line: LineCallback | None = None) -> Task
     if not found_path:
         return TaskResult(ok=True, message="No browser installed — nothing to configure", skipped=True)
 
-    check = await run_local(
-        f"grep -qx 'WebBrowser={found_helper}' ~/.config/xfce4/helpers.rc 2>/dev/null"
-        " && target=$(readlink -f /etc/alternatives/x-www-browser 2>/dev/null)"
-        " && test -x \"$target\""
-        " && echo yes || echo no",
+    # Respect an existing helper choice: XFCE rewrites helpers.rc with
+    # generated ids (e.g. firefox_firefox from the snap desktop file)
+    # once the user opens a browser — never clobber that.
+    existing = await run_local(
+        "grep -m1 '^WebBrowser=' ~/.config/xfce4/helpers.rc 2>/dev/null | cut -d= -f2",
         on_line,
         timeout=30,
     )
-    if check.output.strip() == "yes":
-        return TaskResult(ok=True, message=f"Default browser already {found_helper}", skipped=True)
-
-    cmd = (
-        "mkdir -p ~/.config/xfce4 && "
-        "touch ~/.config/xfce4/helpers.rc && "
-        "sed -i '/^WebBrowser=/d' ~/.config/xfce4/helpers.rc && "
-        f"echo 'WebBrowser={found_helper}' >> ~/.config/xfce4/helpers.rc && "
-        f"sudo update-alternatives --install /usr/bin/x-www-browser x-www-browser {found_path} 200 > /dev/null && "
-        f"sudo update-alternatives --set x-www-browser {found_path} > /dev/null"
+    existing_helper = existing.output.strip()
+    alt_check = await run_local(
+        "test -x /etc/alternatives/x-www-browser && echo yes || echo no",
+        on_line,
+        timeout=30,
     )
-    result = await run_local(cmd, on_line, timeout=60)
+    alt_ok = alt_check.output.strip() == "yes"
+
+    if existing_helper and alt_ok:
+        return TaskResult(ok=True, message=f"Default browser already {existing_helper}", skipped=True)
+
+    parts = []
+    if not existing_helper:
+        parts.append(
+            "mkdir -p ~/.config/xfce4 && "
+            "touch ~/.config/xfce4/helpers.rc && "
+            f"echo 'WebBrowser={found_helper}' >> ~/.config/xfce4/helpers.rc"
+        )
+    if not alt_ok:
+        parts.append(
+            f"sudo update-alternatives --install /usr/bin/x-www-browser x-www-browser {found_path} 200 > /dev/null && "
+            f"sudo update-alternatives --set x-www-browser {found_path} > /dev/null"
+        )
+    result = await run_local(" && ".join(parts), on_line, timeout=60)
     if result.success:
-        return TaskResult(ok=True, message=f"Default browser set to {found_helper} ({found_path})")
+        return TaskResult(ok=True, message=f"Default browser set to {existing_helper or found_helper}")
     return TaskResult(ok=False, message="Failed to configure default browser")
 
 

@@ -172,9 +172,32 @@ class TestRdpPrerequisites:
             "No default WebBrowser configured in ~/.config/xfce4/helpers.rc — "
             "the XFCE browser button will fail with 'Failed to execute default Web Browser'"
         )
-        r = _run(run_wsl(distro, f"bash -lc 'command -v {helper} > /dev/null' && echo yes || echo no"))
+        # The helper id maps to a .desktop in the XFCE helper dirs (XFCE
+        # generates user-level ids like firefox_firefox once a browser
+        # has been opened); resolve it and check its command exists.
+        r = _run(run_wsl(
+            distro,
+            f"ls ~/.local/share/xfce4/helpers/{helper}.desktop "
+            f"/usr/share/xfce4/helpers/{helper}.desktop 2>/dev/null | head -1",
+        ))
+        helper_file = r.output.strip()
+        assert helper_file, (
+            f"WebBrowser helper '{helper}' has no .desktop definition in the "
+            "XFCE helper directories"
+        )
+        r = _run(run_wsl(
+            distro,
+            f"grep -m1 -E '^(TryExec|X-XFCE-Commands)=' '{helper_file}' "
+            "| cut -d= -f2 | cut -d';' -f1",
+        ))
+        command = r.output.strip().split()[0] if r.output.strip() else ""
+        assert command, f"Helper file {helper_file} declares no command"
+        if command.startswith("/"):
+            r = _run(run_wsl(distro, f"test -x {command} && echo yes || echo no"))
+        else:
+            r = _run(run_wsl(distro, f"bash -lc 'command -v {command} > /dev/null' && echo yes || echo no"))
         assert r.output.strip() == "yes", (
-            f"Configured WebBrowser helper '{helper}' does not resolve to a binary"
+            f"WebBrowser helper '{helper}' resolves to '{command}', which is not executable"
         )
 
         # The sensible-browser fallback must not be a dangling alternative.

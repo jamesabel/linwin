@@ -2,8 +2,11 @@
 
 The live RDP tests run against a dedicated clone of the configured
 distro (default name ``linwin-test``) so they never disturb the real
-one. The clone is created on first use via ``wsl --export`` /
-``wsl --import`` (a few minutes, one time) and reused afterwards.
+one. The clone is created at the start of each test session via
+``wsl --export`` / ``wsl --import`` (a few minutes) and unregistered
+at the end, so every run starts from a fresh copy of the real distro
+and the disk space is reclaimed. Set ``LINWIN_TEST_KEEP=1`` to keep
+the clone between runs for faster iteration.
 
 All WSL2 distros share a single network namespace, so the clone's xrdp
 stack is shifted to test ports (xrdp 3391, sesman 3351) and its session
@@ -11,12 +14,13 @@ displays to :20+ (abstract X sockets are also shared, so a live session
 on the real distro's :10 would block the clone's Xorg).
 
 Environment overrides:
-    LINWIN_TEST_DISTRO       distro name to test against (set it to the
-                             real distro's name to opt out of cloning)
-    LINWIN_TEST_XRDP_PORT    xrdp port in the clone (default 3391)
-    LINWIN_TEST_SESMAN_PORT  sesman port in the clone (default 3351)
-
-To rebuild the clone from scratch: ``wsl --unregister linwin-test``.
+    LINWIN_TEST_DISTRO        distro name to test against (set it to the
+                              real distro's name to opt out of cloning;
+                              a custom name is still cloned and deleted)
+    LINWIN_TEST_KEEP          "1" keeps the clone after the run
+    LINWIN_TEST_XRDP_PORT     xrdp port in the clone (default 3391)
+    LINWIN_TEST_SESMAN_PORT   sesman port in the clone (default 3351)
+    LINWIN_TEST_DISPLAY_OFFSET  session display offset (default 20)
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ from linwin.shared.subprocess_runner import run_wsl
 from .helpers import _run
 
 TEST_DISTRO = os.environ.get("LINWIN_TEST_DISTRO", "linwin-test")
+TEST_KEEP = os.environ.get("LINWIN_TEST_KEEP", "") == "1"
 TEST_XRDP_PORT = int(os.environ.get("LINWIN_TEST_XRDP_PORT", "3391"))
 TEST_SESMAN_PORT = int(os.environ.get("LINWIN_TEST_SESMAN_PORT", "3351"))
 TEST_DISPLAY_OFFSET = int(os.environ.get("LINWIN_TEST_DISPLAY_OFFSET", "20"))
@@ -110,11 +115,17 @@ def _create_test_distro(source: str, cfg) -> None:
 
 @pytest.fixture(scope="session")
 def test_distro():
-    """The dedicated test distro, cloned from the configured one on first use."""
+    """The dedicated test distro, cloned fresh for this session.
+
+    Unregistered at session end (unless LINWIN_TEST_KEEP=1) so every
+    run exercises clone creation against a current copy of the real
+    distro and the disk space is reclaimed.
+    """
     cfg = load_config()
     if TEST_DISTRO == cfg.distroImportName:
         # Explicit opt-in to testing against the real distro.
-        return TEST_DISTRO
+        yield TEST_DISTRO
+        return
     registered = _registered_distros()
     if TEST_DISTRO not in registered:
         if cfg.distroImportName not in registered:
@@ -123,7 +134,16 @@ def test_distro():
                 f"{cfg.distroImportName} is registered"
             )
         _create_test_distro(cfg.distroImportName, cfg)
-    return TEST_DISTRO
+
+    yield TEST_DISTRO
+
+    if not TEST_KEEP:
+        _wsl_exe("--unregister", TEST_DISTRO, timeout=300)
+        install_dir = Path(f"{cfg.wslDriveLetter}:\\WSL\\{TEST_DISTRO}")
+        try:
+            install_dir.rmdir()
+        except OSError:
+            pass  # non-empty or already gone — leave it
 
 
 @pytest.fixture(scope="module")

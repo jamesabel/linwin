@@ -23,7 +23,7 @@ All commands use `uv` and run from the project root.
 - Interactive: `python3 -m linwin.linux`
 - Headless (how the Windows side drives it): `python3 -m linwin.linux --headless --step {enable-systemd|install-packages|configure-xrdp}`
 
-**Test caveats:** the `test_rdp_*` modules execute real `wsl.exe` commands — but against a dedicated clone of the configured distro (named `linwin-test`, created automatically by `tests/conftest.py` on first use via export/import, xrdp shifted to port 3391 / sesman 3351 because all WSL2 distros share one network namespace). They never touch the real distro; they skip if no source distro exists to clone. Rebuild the clone with `wsl --unregister linwin-test`; override via `LINWIN_TEST_DISTRO`. Tests use `pytest-asyncio`; async subprocess coros are driven via the `_run` helper in `tests/helpers.py`.
+**Test caveats:** the `test_rdp_*` modules execute real `wsl.exe` commands — but against a dedicated clone of the configured distro (named `linwin-test`, created by `tests/conftest.py` at session start via export/import and unregistered at session end; xrdp shifted to port 3391 / sesman 3351 / displays :20+ because all WSL2 distros share one network namespace). They never touch the real distro; they skip if no source distro exists to clone. Set `LINWIN_TEST_KEEP=1` to keep the clone between runs; override the name via `LINWIN_TEST_DISTRO`. Tests use `pytest-asyncio`; async subprocess coros are driven via the `_run` helper in `tests/helpers.py`.
 
 ## Architecture
 
