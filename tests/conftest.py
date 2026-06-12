@@ -6,8 +6,9 @@ one. The clone is created on first use via ``wsl --export`` /
 ``wsl --import`` (a few minutes, one time) and reused afterwards.
 
 All WSL2 distros share a single network namespace, so the clone's xrdp
-stack is shifted to test ports (xrdp 3391, sesman 3351) to avoid
-colliding with the real distro's services.
+stack is shifted to test ports (xrdp 3391, sesman 3351) and its session
+displays to :20+ (abstract X sockets are also shared, so a live session
+on the real distro's :10 would block the clone's Xorg).
 
 Environment overrides:
     LINWIN_TEST_DISTRO       distro name to test against (set it to the
@@ -35,6 +36,7 @@ from .helpers import _run
 TEST_DISTRO = os.environ.get("LINWIN_TEST_DISTRO", "linwin-test")
 TEST_XRDP_PORT = int(os.environ.get("LINWIN_TEST_XRDP_PORT", "3391"))
 TEST_SESMAN_PORT = int(os.environ.get("LINWIN_TEST_SESMAN_PORT", "3351"))
+TEST_DISPLAY_OFFSET = int(os.environ.get("LINWIN_TEST_DISPLAY_OFFSET", "20"))
 
 
 def _wsl_exe(*args: str, timeout: float = 60) -> subprocess.CompletedProcess:
@@ -84,9 +86,13 @@ def _create_test_distro(source: str, cfg) -> None:
     # WSL2 distros share one network namespace, so two xrdp/sesman
     # instances on the same ports would collide. xrdp discovers
     # sesman's port from sesman.ini, so the two seds stay consistent.
+    # Session displays shift too: abstract X sockets share the netns,
+    # so a live session on the real distro's :10 would block the
+    # clone's Xorg from starting on the same display number.
     fixup = (
         f"sudo sed -i '0,/^port=.*/s//port={TEST_XRDP_PORT}/' /etc/xrdp/xrdp.ini && "
         f"sudo sed -i 's/^ListenPort=.*/ListenPort={TEST_SESMAN_PORT}/' /etc/xrdp/sesman.ini && "
+        f"sudo sed -i 's/^X11DisplayOffset=.*/X11DisplayOffset={TEST_DISPLAY_OFFSET}/' /etc/xrdp/sesman.ini && "
         f"sudo systemctl restart xrdp-sesman xrdp"
     )
     result = _bash(TEST_DISTRO, fixup, timeout=300)
