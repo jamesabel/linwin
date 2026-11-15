@@ -17,7 +17,7 @@ All commands use `uv` and run from the project root.
 - **Run one test:** `uv run python -m pytest tests/test_config.py::test_name -v`
 - **Run with coverage:** `uv run python -m pytest tests/ --cov=linwin --cov-report=term-missing`
 - **Build frozen exe + NSIS installer:** `scripts\ship.bat` (pyship — deletes `dist/`, `app/`, `*.nsi` first since they're stale build artifacts)
-- **Publish to PyPI:** `scripts\publish.bat` (uv build + twine; needs a PyPI token in keyring)
+- **Publish to PyPI:** publish a GitHub release (or run the `Publish to PyPI` workflow); `.github/workflows/publish.yml` builds and uploads with Provenance through a PyPI trusted publisher. Never upload from a workstation, which cannot produce Provenance.
 
 **Linux TUI** (runs inside WSL, where `pref` is typically not installed so config falls back to defaults):
 - Interactive: `python3 -m linwin.linux`
